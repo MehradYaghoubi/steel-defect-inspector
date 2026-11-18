@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Steel Defect Inspector</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111820; color: #f3f5f7; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 72rem; margin: auto; padding: clamp(1rem, 5vw, 3.5rem); }
+    h1 { margin: 0 0 .5rem; font-size: clamp(2rem, 5vw, 3.3rem); letter-spacing: -.045em; }
+    p { line-height: 1.55; color: #c1cbd5; }
+    .layout { display: grid; grid-template-columns: minmax(15rem, 1fr) minmax(0, 2fr); gap: 1.5rem; margin-top: 2rem; }
+    .panel { background: #18232e; border: 1px solid #354552; border-radius: .75rem; padding: 1.25rem; }
+    fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+    label { display: block; font-weight: 650; margin: 0 0 .4rem; }
+    input { display: block; max-width: 100%; font: inherit; margin-bottom: 1.2rem; }
+    input[type=number] { width: 8rem; padding: .5rem; background: #111820; color: inherit; border: 1px solid #788d9f; border-radius: .35rem; }
+    button, input::file-selector-button { font: inherit; cursor: pointer; border: 0; border-radius: .35rem; padding: .55rem .75rem; }
+    button { background: #9ce5d4; color: #101c22; font-weight: 700; }
+    button:disabled { opacity: .65; cursor: wait; }
+    :focus-visible { outline: 2px solid #fbd287; outline-offset: 3px; }
+    #status { min-height: 1.6em; margin-bottom: 0; }
+    h2 { margin-top: 0; font-size: 1.125rem; }
+    img { display: block; width: 100%; max-height: 38rem; object-fit: contain; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { text-align: left; padding: .55rem 0; border-bottom: 1px solid #354552; }
+    th:last-child, td:last-child { text-align: right; }
+    @media (max-width: 44rem) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Steel Defect Inspector</h1>
+    <p>Upload a steel surface image to see defect locations, types, and confidence scores.</p>
+    <div class="layout">
+      <section class="panel" aria-label="Inspection controls">
+        <form id="inspection">
+          <fieldset id="controls">
+            <label for="image">Steel surface image</label>
+            <input id="image" type="file" accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff" required>
+            <label for="threshold">Minimum confidence (%)</label>
+            <input id="threshold" type="number" value="25" min="1" max="100" step="1" required>
+            <button type="submit">Inspect image</button>
+          </fieldset>
+        </form>
+        <p id="status" role="status"></p>
+      </section>
+      <section class="panel" id="result" aria-labelledby="result-heading">
+        <h2 id="result-heading">Inspection result</h2>
+        <p id="empty">The annotated image will appear here.</p>
+        <div id="overlay"></div>
+        <table id="detections" hidden>
+          <thead><tr><th scope="col">Defect</th><th scope="col">Confidence</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+  <script>
+    const form = document.querySelector('#inspection');
+    const controls = document.querySelector('#controls');
+    const status = document.querySelector('#status');
+    const preview = document.querySelector('#overlay');
+    const table = document.querySelector('#detections');
+    const rows = table.querySelector('tbody');
+    const empty = document.querySelector('#empty');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const image = document.querySelector('#image').files[0];
+      const threshold = document.querySelector('#threshold').valueAsNumber / 100;
+      controls.disabled = true;
+      status.textContent = 'Inspecting image…';
+      table.hidden = true;
+      preview.replaceChildren();
+      rows.replaceChildren();
+      empty.hidden = true;
+      try {
+        const response = await fetch(`/predict?threshold=${threshold}`, { method: 'POST', body: image });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+        const annotated = document.createElement('img');
+        annotated.src = result.overlay;
+        annotated.alt = 'Uploaded steel surface with detected defects outlined and labeled';
+        preview.replaceChildren(annotated);
+        for (const detection of result.detections) {
+          const row = rows.insertRow();
+          row.insertCell().textContent = detection.type;
+          row.insertCell().textContent = `${(detection.score * 100).toFixed(1)}%`;
+        }
+        const count = result.detections.length;
+        table.hidden = count === 0;
+        status.textContent = count === 0
+          ? 'No detections meet the confidence threshold.'
+          : `${count} detection${count === 1 ? '' : 's'}.`;
+      } catch (error) {
+        status.textContent = error.message || 'Image inspection failed.';
+        empty.hidden = false;
+      } finally {
+        controls.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
