@@ -17,14 +17,14 @@ class Runtime:
     run: Callable[[np.ndarray], np.ndarray]
 
 
-def load_torch(checkpoint, *, device="cpu", threads=1):
+def load_torch(checkpoint, *, device="cpu", threads=1, flip_ensemble=False):
     import torch
 
     from .model import restore
 
     if device == "cpu":
         torch.set_num_threads(threads)
-    model, size = restore(checkpoint)
+    model, size = restore(checkpoint, flip_ensemble=flip_ensemble)
     model.to(device)
 
     @torch.inference_mode()

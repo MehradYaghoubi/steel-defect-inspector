@@ -57,6 +57,32 @@ def match_detections(boxes, labels, true_boxes, true_labels):
     return matched, false_positives
 
 
+def operating_point(threshold, true_positives, false_positives, ground_truth_count):
+    predictions = true_positives + false_positives
+    return {
+        "threshold": threshold,
+        "true_positives": true_positives,
+        "false_positives": false_positives,
+        "false_negatives": ground_truth_count - true_positives,
+        "precision": true_positives / predictions if predictions else 0.0,
+        "recall": true_positives / ground_truth_count if ground_truth_count else 0.0,
+        "f1": 2 * true_positives / (predictions + ground_truth_count) if predictions + ground_truth_count else 0.0,
+    }
+
+
+def precision_recall_curve(scores, matches, ground_truth_count):
+    scores = np.asarray(scores)
+    matches = np.asarray(matches, dtype=bool)
+    points = []
+    for percent in range(1, 101):
+        threshold = percent / 100
+        accepted = scores >= threshold
+        tp = int(np.count_nonzero(accepted & matches))
+        fp = int(np.count_nonzero(accepted & ~matches))
+        points.append(operating_point(threshold, tp, fp, ground_truth_count))
+    return points
+
+
 def save_examples(output, root, examples, key):
     selected, classes, seen = [], set(), set()
     for example in examples:
@@ -79,12 +105,15 @@ def save_examples(output, root, examples, key):
     return selected
 
 
-def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu"):
+def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu", tune_threshold=False, flip_ensemble=False):
     if not 0 < threshold <= 1:
         raise ValueError("Threshold must be in (0, 1]")
+    if tune_threshold and split != "val":
+        raise ValueError("Threshold tuning requires the validation split")
     root, rows = read_split(manifest, split)
-    runtime = load_torch(checkpoint, device=device)
+    runtime = load_torch(checkpoint, device=device, flip_ensemble=flip_ensemble)
     images, annotations, predictions, false_examples, missed_examples = [], [], [], [], []
+    observations, tuning_scores, tuning_matches = [], [], []
     counts = {label: {"ground_truth": 0, "matched": 0, "false_positives": 0} for label in CLASSES}
     for image_id, row in enumerate(rows, 1):
         width, height = row["size"]
@@ -104,6 +133,21 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
                 predictions.append({
                     "image_id": image_id, "category_id": int(label) + 1, "bbox": xywh(box), "score": float(score),
                 })
+        observations.append((row, boxes, scores, labels))
+        if tune_threshold:
+            # Matching visits highest scores first, so dropping low scores keeps the earlier matches.
+            _, rejected = match_detections(boxes, labels, np.asarray(row["boxes"]), row["labels"])
+            accepted = np.ones(len(scores), dtype=bool)
+            accepted[rejected] = False
+            tuning_scores.extend(scores)
+            tuning_matches.extend(accepted)
+
+    if tune_threshold:
+        sweep = precision_recall_curve(tuning_scores, tuning_matches, len(annotations))
+        selected = max(sweep, key=lambda point: (point["f1"], point["precision"], point["threshold"]))
+        threshold = selected["threshold"] if selected["f1"] else threshold
+
+    for row, boxes, scores, labels in observations:
         keep = scores >= threshold
         boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
         true_boxes = np.asarray(row["boxes"])
@@ -130,21 +174,28 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
         "image_count": len(images),
         "split_sha256": hashlib.sha256("".join(row["sha256"] for row in rows).encode()).hexdigest(),
         "checkpoint_sha256": hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest(),
+        "flip_ensemble": flip_ensemble,
         "coco_ap_50_95": ap,
         "coco_ap_50": ap50,
         "ap_score_floor": AP_THRESHOLD,
         "error_score_threshold": threshold,
         "error_match_iou": MATCH_IOU,
+        "micro_at_threshold": operating_point(
+            threshold, sum(row["matched"] for row in counts.values()),
+            sum(row["false_positives"] for row in counts.values()), len(annotations),
+        ),
         "per_class": counts,
         "false_positive_examples": save_examples(output, root, false_examples, "false-positive"),
         "miss_examples": save_examples(output, root, missed_examples, "miss"),
     }
+    if tune_threshold:
+        results["threshold_sweep"] = sweep
     write_json(output, results)
     print(f"{split}: {len(images)} images, mAP50:95={ap:.4f}, AP50={ap50:.4f}")
     return results
 
 
-def compare(manifest, checkpoint, onnx, output, *, samples=60, threads=1, threshold=0.25):
+def compare(manifest, checkpoint, onnx, output, *, samples=60, threads=1, threshold=0.25, flip_ensemble=False):
     import onnxruntime
     import torch
 
@@ -153,7 +204,7 @@ def compare(manifest, checkpoint, onnx, output, *, samples=60, threads=1, thresh
     root, rows = read_split(manifest, "test")
     # Spread the fixed sample over the class-sorted manifest.
     sampled = np.linspace(0, len(rows) - 1, min(samples, len(rows)), dtype=int)
-    runtimes = [load_torch(checkpoint, threads=threads), load_onnx(onnx, threads=threads)]
+    runtimes = [load_torch(checkpoint, threads=threads, flip_ensemble=flip_ensemble), load_onnx(onnx, threads=threads)]
     if runtimes[0].size != runtimes[1].size:
         raise ValueError("Checkpoint and ONNX model expect different input sizes")
     size = runtimes[0].size
@@ -198,6 +249,7 @@ def compare(manifest, checkpoint, onnx, output, *, samples=60, threads=1, thresh
         "threads_per_runtime": threads,
         "torch_version": torch.__version__,
         "onnxruntime_version": onnxruntime.__version__,
+        "flip_ensemble": flip_ensemble,
         "input_size": [size, size],
         "threshold": threshold,
         "timed_steps": ["preprocess decoded image", "inference", "decode and NMS"],

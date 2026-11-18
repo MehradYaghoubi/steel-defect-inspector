@@ -41,7 +41,7 @@
             <label for="image">Steel surface image</label>
             <input id="image" type="file" accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff" required>
             <label for="threshold">Minimum confidence (%)</label>
-            <input id="threshold" type="number" value="25" min="1" max="100" step="1" required>
+            <input id="threshold" type="number" value="{{confidence_percent}}" min="1" max="100" step="1" required>
             <button type="submit">Inspect image</button>
           </fieldset>
         </form>

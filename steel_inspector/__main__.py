@@ -32,7 +32,9 @@ def main():
     path_argument(evaluate, "checkpoint")
     path_argument(evaluate, "output")
     evaluate.add_argument("--split", choices=("val", "test"), required=True)
-    evaluate.add_argument("--threshold", type=float, default=0.25)
+    operating_point = evaluate.add_mutually_exclusive_group()
+    operating_point.add_argument("--threshold", type=float, default=0.25)
+    operating_point.add_argument("--tune-threshold", action="store_true", help="Select the confidence threshold by validation F1")
     evaluate.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
 
     export = actions.add_parser("export", help="Export the checkpoint to ONNX")
@@ -47,6 +49,8 @@ def main():
     compare.add_argument("--samples", type=int, default=60)
     compare.add_argument("--threads", type=int, default=1)
     compare.add_argument("--threshold", type=float, default=0.25)
+    for command in (evaluate, export, compare):
+        command.add_argument("--flip-ensemble", action="store_true", help="Average predictions from the input and its horizontal mirror")
 
     args = vars(parser.parse_args())
     action = args.pop("action")

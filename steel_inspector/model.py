@@ -157,19 +157,35 @@ def train(manifest, output, *, epochs=30, batch_size=32, augment=False, size=192
     return history
 
 
-def restore(checkpoint):
+class HorizontalEnsemble(nn.Module):
+    def __init__(self, detector):
+        super().__init__()
+        self.detector = detector
+
+    def forward(self, image):
+        direct = self.detector(image)
+        reflected = self.detector(image.flip((-1,))).flip((-1,))
+        # The horizontal center offset changes sign when mapped to the original image.
+        offset = len(CLASSES)
+        aligned = torch.cat((reflected[:, :offset], -reflected[:, offset:offset + 1], reflected[:, offset + 1:]), dim=1)
+        return (direct + aligned) / 2
+
+
+def restore(checkpoint, *, flip_ensemble=False):
     checkpoint = torch.load(checkpoint, map_location="cpu", weights_only=True)
     if checkpoint["version"] != 1 or checkpoint["classes"] != list(CLASSES):
         raise ValueError("Unsupported checkpoint format")
     model = Detector()
     model.load_state_dict(checkpoint["weights"])
+    if flip_ensemble:
+        model = HorizontalEnsemble(model)
     return model.eval(), checkpoint["size"]
 
 
-def export_model(checkpoint, output):
+def export_model(checkpoint, output, *, flip_ensemble=False):
     import onnx
 
-    model, size = restore(checkpoint)
+    model, size = restore(checkpoint, flip_ensemble=flip_ensemble)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(

@@ -71,7 +71,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            threshold = float(parse_qs(target.query).get("threshold", ["0.25"])[0])
+            threshold = float(parse_qs(target.query).get("threshold", [self.server.threshold])[0])
             if not 0 < threshold <= 1:
                 raise ValueError
         except ValueError:
@@ -93,13 +93,17 @@ def main():
     parser = argparse.ArgumentParser(description="Run the local CPU demo")
     parser.add_argument("--model", type=Path, default=Path("runs/detector.onnx"))
     parser.add_argument("--port", type=int, default=8501)
+    parser.add_argument("--threshold", type=int, default=25, metavar="PERCENT", help="Initial confidence cutoff from 1 to 100")
     args = parser.parse_args()
     if not args.model.is_file():
         parser.error(f"Detector {args.model} is missing. Export a checkpoint and pass it to --model.")
+    if not 1 <= args.threshold <= 100:
+        parser.error("Confidence must be an integer percent from 1 to 100.")
     runtime = load_onnx(args.model)
     with ThreadingHTTPServer(("127.0.0.1", args.port), DemoHandler) as server:
-        server.page = Path(__file__).with_name("demo.html").read_bytes()
+        server.page = Path(__file__).with_name("demo.html").read_bytes().replace(b"{{confidence_percent}}", str(args.threshold).encode("ascii"))
         server.runtime = runtime
+        server.threshold = args.threshold / 100
         print(f"Open http://127.0.0.1:{server.server_port}", flush=True)
         try:
             server.serve_forever()

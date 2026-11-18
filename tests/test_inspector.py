@@ -7,7 +7,7 @@ from PIL import Image
 
 from app import inspect_image
 from steel_inspector.data import CLASSES, horizontal_flip, prepare
-from steel_inspector.evaluation import coco_ap, compare, evaluate, match_detections
+from steel_inspector.evaluation import coco_ap, compare, evaluate, match_detections, precision_recall_curve
 from steel_inspector.inference import decode, load_onnx, load_torch, predict
 from steel_inspector.model import export_model, train
 
@@ -92,6 +92,16 @@ def test_duplicate_and_wrong_class_predictions_are_errors():
     assert errors == [0, 2]
 
 
+def test_threshold_sweep_counts_false_alarms_and_misses():
+    points = precision_recall_curve([0.80, 0.60, 0.50, 0.30], [True, False, True, False], 3)
+    assert points[49] == {
+        "threshold": 0.50, "true_positives": 2, "false_positives": 1, "false_negatives": 1,
+        "precision": pytest.approx(2 / 3), "recall": pytest.approx(2 / 3), "f1": pytest.approx(2 / 3),
+    }
+    assert points[99]["precision"] == 0
+    assert points[99]["recall"] == 0
+
+
 def test_perfect_prediction_reaches_full_coco_ap():
     ap, ap50 = coco_ap(
         [{"id": 1, "width": 20, "height": 20}],
@@ -102,16 +112,17 @@ def test_perfect_prediction_reaches_full_coco_ap():
     assert ap50 == pytest.approx(1)
 
 
-def test_cpu_train_export_and_inference_agree(fixture_dataset):
+@pytest.mark.parametrize("flip_ensemble", [False, True])
+def test_cpu_train_export_and_inference_agree(fixture_dataset, flip_ensemble):
     manifest = fixture_dataset.parent / "split.json"
     checkpoint = fixture_dataset.parent / "detector.pt"
     onnx = fixture_dataset.parent / "detector.onnx"
     prepare(fixture_dataset, manifest, seed=17)
     train(manifest, checkpoint, epochs=1, batch_size=3, augment=True, size=64, seed=17, device="cpu")
-    export_model(checkpoint, onnx)
+    export_model(checkpoint, onnx, flip_ensemble=flip_ensemble)
     path = next((fixture_dataset / "images").glob("*.png"))
     with Image.open(path) as sample:
-        torch_output = predict(load_torch(checkpoint), sample, threshold=0.01)
+        torch_output = predict(load_torch(checkpoint, flip_ensemble=flip_ensemble), sample, threshold=0.01)
         onnx_output = predict(load_onnx(onnx), sample, threshold=0.01)
     assert len(torch_output[0]) > 0
     for first, second in zip(torch_output, onnx_output):
@@ -127,7 +138,13 @@ def test_cpu_train_export_and_inference_agree(fixture_dataset):
     assert report["image_count"] == 6
     assert len(report["miss_examples"]) == 6
     assert 0 <= report["coco_ap_50_95"] <= 1
+    assert report["micro_at_threshold"]["false_negatives"] == 6
+    with pytest.raises(ValueError, match="validation"):
+        evaluate(manifest, checkpoint, fixture_dataset.parent / "tuned.json", split="test", tune_threshold=True)
+    tuned = evaluate(manifest, checkpoint, fixture_dataset.parent / "tuned.json", split="val", tune_threshold=True)
+    assert len(tuned["threshold_sweep"]) == 100
+    assert tuned["micro_at_threshold"]["threshold"] == tuned["error_score_threshold"]
 
-    parity = compare(manifest, checkpoint, onnx, fixture_dataset.parent / "compare.json", threshold=0.01)
+    parity = compare(manifest, checkpoint, onnx, fixture_dataset.parent / "compare.json", threshold=0.01, flip_ensemble=flip_ensemble)
     assert parity["passed"]
     assert parity["images_with_detections"] == 6
