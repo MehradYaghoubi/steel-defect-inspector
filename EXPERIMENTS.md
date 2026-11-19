@@ -272,6 +272,17 @@ We implemented the piecewise overlap term from equations 14–20 locally and use
 
 A subsequent 640 px GPU preflight finished and saved a checkpoint. Batch eight reported about 10.5 GB reserved on the 8 GB RTX 2060 SUPER, so we stopped its full-run launch and started fresh at batch four. The matched reconstruction uses the audited raw training and validation exports, seed 42, SGD at a 0.01 initial rate with momentum 0.937 and weight decay 0.0005, 300 epochs, and the local piecewise loss described above. It will score the training-selected checkpoint on validation with the shared COCO evaluator. The published YOLO11 test result and its selection remain fixed.
 
+Replay the reconstruction with the pinned SLF-YOLO checkout under `runs/slf-reference`. Use its bundled Ultralytics on `PYTHONPATH` and install its dependencies in a separate environment. The local run used Python 3.11.16, PyTorch 2.8.0+cu126, and pandas 3.1.1. The runner reads the released architecture and sets six classes, and checks the frozen split hash and the parameter count before training.
+
+```bash
+git clone https://github.com/zacianfans/SLF-YOLO.git runs/slf-reference
+git -C runs/slf-reference checkout --detach da113f16d8a46b0543f13366b0d3c1f2ae445d24
+python benchmark_yolo.py --manifest data/split.json prepare --destination runs/yolo-neudet
+PYTHONPATH=./runs/slf-reference/SLF-YOLO python train_slf_baseline.py --box-loss fimetal --device 0 --batch 4 --name fimetal-matched-640-b4-seed42
+```
+
+The published runner completed a CPU smoke run with `--device cpu --epochs 1 --imgsz 128 --batch 2 --fraction 0.005`. It saved a checkpoint that the shared evaluator loaded and scored on all 270 validation images. The smoke checkpoint scored zero AP.
+
 In the 448 px YOLO11s run, the shared COCO evaluator scored the epoch-10 checkpoint at 60.58% mAP@50 and 26.77% mAP@50:95. At epoch 20 it reached 67.14% and 34.77%, respectively, on the same validation split. These are development checkpoints from the ongoing 80-epoch run. The 640 px DFE-Net GPU preflight also completed training on a small subset, saved a checkpoint and evaluated it on the 270 validation images with the shared evaluator. Full DFE-Net training remains queued.
 
 The archived epoch-30 checkpoint reached 75.92% mAP@50 and 39.45% mAP@50:95 on the same 270 images. Its SHA-256 is `6427c1eca0a250ea1395dd09b618bc761b5ecb4be79cdb19870026a9a250a7fb`.
