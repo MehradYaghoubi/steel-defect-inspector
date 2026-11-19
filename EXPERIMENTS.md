@@ -231,3 +231,13 @@ python compare_detection_runs.py --baseline runs/yolo11n-texture-final-predictio
 ~~~
 
 These results are validation-only. The reproduced DFE-Net metrics are from its authors' split and evaluator, so they are kept in a separate table.
+
+### Texture resolution adaptation
+
+The final 256 px texture checkpoint scored 70.75% mAP@50 and 33.04% mAP@50:95 when run at 320 px without training at that resolution. At 256 px, the same weights scored 76.16% and 42.94% on the same 270 validation images. The 9.90-point mAP@50:95 decrease motivated a separate 320 px fine-tuning run from the texture checkpoint. The run uses 24 epochs, AdamW with a 0.0005 initial learning rate, cosine decay, and weaker scale and mosaic augmentation. It uses the original audited train and validation partitions. Evaluate its trained 320 px checkpoint against both the unchanged 320 px control and the 256 px starting result. The first warm-up epoch reached 63.41% mAP@50 and 30.14% mAP@50:95 with the shared COCO evaluator. The fine-tuning run is in progress.
+
+### Frozen split verification
+
+Rebuilding the manifest from the source images and Pascal VOC annotations with seed 42 reproduced the same ordered image digests, classes, boxes, split assignments and annotation-audit counts. The existing manifest SHA-256 remained 3e278f74bf136cbcd149a0281ed8e3b661df24f8ad9c0ec3c1d1819ebd4dcead. Both YOLO dataset exports matched all 1,258 training and 270 validation records. Raw copies matched source bytes, texture images matched the deterministic transform, and normalized labels matched the manifest within nine-decimal rounding. Both exports contained train and validation images.
+
+As an additional screen for cross-split near duplicates, we compared the signs relative to the median of 63 low-frequency DCT coefficients from 32 px grayscale images. We checked original and horizontally flipped versions and flagged Hamming distance at most four. This screen flagged no pair. Crops, stronger transformations and shared acquisition conditions remain outside this check.
