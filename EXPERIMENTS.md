@@ -459,6 +459,12 @@ The archived 448 px checkpoint produced 2,042 validation detections in the same 
 
 ### Held-out comparison procedure
 
+#### Frozen selection before test
+
+The 300-epoch DFE-Net run and both ten-epoch loss-refinement arms completed. On validation, the existing three-pass candidate reached 47.96% mAP@50:95. The completed control and higher localization-weight arms reached 47.65% and 47.72%, respectively, using the same fusion. The higher-weight arm changed strict mAP by +0.07 points versus the control (95% paired interval [-0.64, 0.75]) and increased mAP@50 by 1.58 points (interval [0.27, 3.12]). We selected the existing prespecified equal-weight three-pass configuration on validation as the candidate. It uses the two YOLO11n views at 320 px and original YOLO11s at 448 px with fusion IoU 0.65.
+
+The candidate checkpoint hashes are `a67d5a9d72aee7609cbccf8a9222486f47ade9a7eab19a059ec6d718ac60b64c` and `03637fba8ca00a03826b06d9504d4cecfccec31ce3968e264564ce4db1b0ec39`. The reference is training-selected DFE-Net `best.pt`, raw at 640 px, SHA-256 `c766bf2f66adc0b5b8263dc18a410f1d018e28f35e62bf96e720ab0fe97cfc1b`. It reached 78.39% mAP@50 and 44.80% mAP@50:95 on validation. The test comparison uses manifest SHA-256 `3e278f74bf136cbcd149a0281ed8e3b661df24f8ad9c0ec3c1d1819ebd4dcead`, CUDA FP32, the shared COCO evaluator, confidence floor 0.01, class-wise NMS at 0.50 and cap 100. Use 1,000 paired image draws with seed 42 for the primary difference.
+
 Select the candidate pipeline and the matched reference checkpoint using validation, and record their checkpoint hashes, inference settings, and selection rule before scoring the held-out split. The benchmark compares complete detection systems. Our candidate uses COCO-pretrained texture models and multiple inference passes, while DFE-Net uses its released fresh-initialization recipe and one pass on raw images. Report these differences alongside accuracy and latency.
 
 Use the project manifest and `benchmark_yolo.py` for each detector or view, then `fuse_detection_runs.py` for the selected ensemble. Run `compare_detection_runs.py` on the resulting reference and candidate prediction bundles to verify identical ordered images, annotations and evaluation settings, and to compute the candidate-minus-reference AP difference. Report the paired image bootstrap interval and the two absolute scores. The interval quantifies variation across sampled test images for the frozen pair of runs. It does not include variation from training seeds.

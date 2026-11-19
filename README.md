@@ -12,6 +12,10 @@ The current three-pass YOLO11 candidate scored **79.89% AP@50** and **47.96% mAP
 
 ## Run the demo
 
+![Steel Defect Inspector showing an inclusion bounding box and 51.0% confidence after uploading an industrial steel image](docs/steel-demo.png)
+
+Live CPU demo capture using the 192 px ONNX detector and a 34% score cutoff. Input: `inclusions1.jpg` from [CR7-DET by Jiang, Wang, and Chen](https://zenodo.org/records/14263276) ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), displayed with the detector's annotation. This is an external demo example.
+
 If you have the local `runs/precision192-e35.onnx` file from training, start with the demo command below. In a fresh checkout, train and export a checkpoint first. The demo needs only the ONNX model and the demo dependencies.
 
 ```bash
