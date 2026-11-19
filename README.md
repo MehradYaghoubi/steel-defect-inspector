@@ -2,19 +2,32 @@
 
 Upload a grayscale or color image of a steel strip to see the detector's bounding boxes, defect names, and confidence scores. The browser demo runs on a local CPU using ONNX Runtime.
 
-On 270 NEU-DET test images, the 192 × 192 detector reached **88.99% micro-precision at 14.79% recall** with a validation-selected confidence cutoff of 0.58. At the balanced cutoff of 0.34, it reached **62.10% precision, 56.71% recall and 59.28% F1**, up from 55.04% F1 for the previous model. Test AP@50 rose from 52.13% to 57.74%. [Experiment report](EXPERIMENTS.md)
-
 The six classes are crazing, inclusion, patches, pitted surface, rolled-in scale, and scratches. The benchmark uses the bounding-box annotations from the NEU-DET release. The maintainers describe 1,800 grayscale images at 200 × 200 pixels. [NEU surface defect database](https://faculty.neu.edu.cn/songkc/en/zdylm/263270/list/index.htm)
 
 ## Research benchmark
 
-On 270 NEU-DET test images, the three-pass YOLO11 system scored **43.78% mAP@50:95**, compared with **40.21%** for DFE-Net retrained on the same project split. The improvement was **3.57 percentage points** (95% paired image interval **1.89 to 4.87**). Both systems used the shared COCO evaluator and one training seed. The result supports a comparison with this DFE-Net reproduction on this split. [Test results and limits](EXPERIMENTS.md#matched-held-out-result) · [Machine-readable report](docs/matched-test.json)
+On **270 NEU-DET test images**, the three-pass YOLO11 system improved the primary metric, **mAP@50:95, by 3.57 percentage points** over DFE-Net retrained on the same project split.
+
+| System | Test mAP@50 | Test mAP@50:95 |
+| --- | ---: | ---: |
+| DFE-Net, matched retraining | 74.07% | 40.21% |
+| Three-pass YOLO11 | **77.04%** | **43.78%** |
+| Improvement in percentage points | +2.97 | +3.57 |
+
+The 95% paired image interval for the primary improvement was **+1.89 to +4.87 points**. The comparison uses one training seed and the shared COCO evaluator. Its scope is the matched DFE-Net reproduction on this split. [Test results and limits](EXPERIMENTS.md#matched-held-out-result) · [Machine-readable report](docs/matched-test.json)
 
 ## Run the demo
 
 ![Steel Defect Inspector showing an inclusion bounding box and 51.0% confidence after uploading an industrial steel image](docs/steel-demo.png)
 
-Live CPU demo capture using the 192 px ONNX detector and a 34% score cutoff. Input: `inclusions1.jpg` from [CR7-DET by Jiang, Wang, and Chen](https://zenodo.org/records/14263276) ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), displayed with the detector's annotation. This is an external demo example.
+Live CPU demo capture using the 192 px ONNX detector and a 34% score cutoff. The detector annotated `inclusions1.jpg`, an external steel image from CR7-DET. [Jiang, Wang, and Chen, CR7-DET](https://zenodo.org/records/14263276) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+The lightweight ONNX demo model has these operating points on the 270 NEU-DET test images. [Demo model evaluation](EXPERIMENTS.md)
+
+| Confidence cutoff | Micro-precision | Micro-recall | Micro-F1 |
+| --- | ---: | ---: | ---: |
+| 0.34, balanced | 62.10% | 56.71% | 59.28% |
+| 0.58, high precision | 88.99% | 14.79% | 25.36% |
 
 If you have the local `runs/precision192-e35.onnx` file from training, start with the demo command below. In a fresh checkout, train and export a checkpoint first. The demo needs only the ONNX model and the demo dependencies.
 
