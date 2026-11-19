@@ -259,3 +259,11 @@ The texture effect was +3.40 mAP@50:95 points for seed 42 and -0.53 points for s
 ### GPU training started
 
 The CUDA environment uses CPython 3.11.16, PyTorch 2.8.0+cu126, torchvision 0.23.0+cu126 and Ultralytics 8.4.11 on an RTX 2060 SUPER. The first YOLO11s training attempt ran through validation but failed before its first checkpoint while Polars 2.1.0 checked CPU flags. Pinning Polars 1.31.0 resolved the import failure. The restarted run saved its first checkpoint and reached epoch 2. It uses the prepared texture dataset at 448 px, seed 42, batch size 8, AdamW, and up to 80 epochs. The test split has been reserved for final comparison.
+
+### SLF-YOLO artifact audit
+
+SLF-YOLO reports 80.0% mAP@50 and 49.0% mAP@50:95 under its own 8:1:1 split. The paper describes 300 epochs, 640 px inputs, batch size 32, SGD and FIMetal-IoU. The authors' released architecture built locally at scale s with six classes and 9,666,942 parameters, and produced finite detections in a forward pass. [Paper, Tables 1 and 4](https://www.nature.com/articles/s41598-025-94936-9.pdf) · [Pinned source](https://github.com/zacianfans/SLF-YOLO/tree/da113f16d8a46b0543f13366b0d3c1f2ae445d24)
+
+At that revision the released training loss calls CIoU, and the repository tree contains neither evaluation weights nor a NEU-DET split manifest. A retrained result from the available code would therefore be an architecture comparison using CIoU. The reported 49.0% stays an external reference under a separate protocol. [Released box loss](https://github.com/zacianfans/SLF-YOLO/blob/da113f16d8a46b0543f13366b0d3c1f2ae445d24/SLF-YOLO/ultralytics/utils/loss.py#L102)
+
+In the 448 px YOLO11s run, the shared COCO evaluator scored the epoch-10 checkpoint at 60.58% mAP@50 and 26.77% mAP@50:95. At epoch 20 it reached 67.14% and 34.77%, respectively, on the same validation split. These are development checkpoints from the ongoing 80-epoch run. The 640 px DFE-Net GPU preflight also completed training on a small subset, saved a checkpoint and evaluated it on the 270 validation images with the shared evaluator. Full DFE-Net training remains queued.
