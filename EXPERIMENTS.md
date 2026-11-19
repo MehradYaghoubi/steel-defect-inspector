@@ -130,3 +130,42 @@ The published DFE-Net study evaluates 360 validation images and 882 boxes at inp
 The command was `python tools/val.py --model all --device cpu` on Windows with Python 3.14.4 and PyTorch 2.14.0+cpu. In the local Windows checkout we deferred imports of MMCV CARAFE and skipped imports of the legacy Mamba and DyHead variants, which neither checkpoint uses. The forward pass, annotations, thresholds and metric computation were unchanged. The source validation split is used for checkpoint selection and contains the duplicate pair noted above. These results are reported on the authors' split and scored by their evaluator. The project uses a different held-out split and COCO scoring.
 
 A fresh model built from the released DFE-Net YAML had 2,246,720 trainable parameters. It completed an SGD update with finite gradients on four images and ten boxes from the project's training split. This check establishes that the architecture can be trained locally from fresh weights. Full matched-split training is pending.
+
+### Follow-up validation snapshots
+
+At epoch 9, raw YOLO11n reached 70.39% mAP@50 and 33.83% mAP@50:95 under the shared COCO protocol.
+
+| Validation metric at epoch 3 | Raw YOLO11n | Texture YOLO11n |
+| --- | ---: | ---: |
+| mAP@50 | 36.12% | 40.83% |
+| mAP@50:95 | 14.98% | 16.89% |
+| Crazing AP@50 | 4.95% | 16.02% |
+| Inclusion AP@50 | 47.38% | 43.93% |
+
+Both runs used the same training and validation images, normalized boxes, initial checkpoint and seed. The raw run used four CPU threads and texture used two. These are interim results from one seed, collected before the two runs finished.
+
+DFE-Net also completed a one-epoch engineering run from fresh weights, using a 25-image subset of project training and all 270 validation images. The run saved a checkpoint that the shared COCO evaluator could load and score. This run used 128 px input and only checks the training-to-evaluation path.
+
+The next full GPU candidate is COCO-pretrained YOLO11s at 448 px, seed 42, up to 80 epochs, batch 8, AdamW with a 0.001 initial learning rate and cosine decay. The run uses the same raw train and validation split, with grayscale-friendly augmentation (no hue or saturation shifts). Evaluate its final candidates with the same COCO protocol. CUDA installation is pending.
+
+### Inference settings and uncertainty
+
+On the raw epoch-9 checkpoint, default 256 px inference reached 70.39% mAP@50 and 33.83% mAP@50:95. Ultralytics test-time augmentation at 256 px reached 71.03% and 34.75%. Single-pass 320 px inference reached 63.15% and 25.03%. All three results use validation only and the same score floor, NMS IoU and maximum detections. [Ultralytics prediction settings](https://docs.ultralytics.com/modes/predict/)
+
+The evaluator can save a prediction bundle with the boxes, image IDs, annotations, checkpoint and evaluation settings. To estimate uncertainty for a matched comparison, pass both bundles to the comparison script. It resamples whole images with replacement and scores both models on the same draw. The interval estimates variation across images for two fixed runs. Report variation across training seeds separately.
+
+~~~bash
+python benchmark_yolo.py --manifest data/split.json evaluate --checkpoint runs/yolo11n-seed42-e9.pt --split val --imgsz 256 --output runs/e9-raw-val.json --predictions-output runs/e9-raw-predictions.json
+python benchmark_yolo.py --manifest data/split.json evaluate --checkpoint runs/yolo11n-seed42-e9.pt --split val --imgsz 256 --tta --output runs/e9-tta-val.json --predictions-output runs/e9-tta-predictions.json
+python compare_detection_runs.py --baseline runs/e9-raw-predictions.json --candidate runs/e9-tta-predictions.json --repetitions 200 --seed 42 --output runs/e9-tta-paired-val.json
+~~~
+
+Across 200 paired image draws (seed 42), TTA gained 0.92 percentage points in mAP@50:95 with a 95% percentile interval of [-0.40, +2.09] points. For mAP@50 the gain was 0.65 points with an interval of [-1.34, +2.47] points. These intervals include zero, so single-pass inference remains the development default. The cached evaluator and full COCO rematching produced identical intervals on these two prediction bundles.
+
+### Independent multi-seed reference
+
+Jeong and Song released their benchmark manifests, training arguments and per-run evaluation records. On their NEU-DET test split, YOLO12s had the highest mean of the four evaluated architectures at 74.4% mAP@50 and 42.4% mAP@50:95. The standard deviations across three training seeds were 1.1 and 0.6 percentage points. Their YOLO11s averaged 73.0% and 41.1%. Training used up to 200 epochs at 640 px. [Benchmark archive and result tables](https://doi.org/10.5281/zenodo.23073155)
+
+The downloaded archive matched its published MD5. Its NEU-DET manifest has 1,259 train, 269 validation and 271 test images. After removing the Roboflow filename suffix, 185 of our test filenames matched the authors' training split and 41 matched their test split. Use their results as an external reference. A direct test comparison requires a clean retraining and the same images and annotations.
+
+At epoch 7 the texture advantage seen at epoch 3 did not persist. Raw YOLO11n reached 65.63% mAP@50 and 30.00% mAP@50:95, compared with 60.04% and 28.08% for texture. Crazing AP@50 was 27.82% raw and 26.53% texture. The raw run reached 73.18% mAP@50 and 38.81% mAP@50:95 at epoch 13. These scores use project validation and the shared COCO evaluator.

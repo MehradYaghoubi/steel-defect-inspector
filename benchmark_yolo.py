@@ -62,13 +62,15 @@ def prepare(manifest, destination, representation):
     write_json(destination / "dataset.yaml", config)
 
 
-def evaluate(manifest, checkpoint, split, imgsz, device, representation):
+def evaluate(manifest, checkpoint, split, imgsz, device, representation, *, tta=False, predictions_output=None):
     from ultralytics import YOLO, __version__
 
     root, rows = read_split(manifest, split)
     model = YOLO(str(checkpoint))
     if model.task != "detect" or tuple(model.names.values()) != CLASSES:
         raise ValueError("Checkpoint must be a detector with the NEU-DET class order")
+    if tta and getattr(model.model, "end2end", False):
+        raise ValueError("Ultralytics TTA requires a detector with an NMS-based head")
 
     images, annotations, predictions = [], [], []
     for start in range(0, len(rows), 8):
@@ -78,7 +80,7 @@ def evaluate(manifest, checkpoint, split, imgsz, device, representation):
         results = model.predict(
             sources,
             imgsz=imgsz, conf=AP_THRESHOLD, iou=NMS_IOU,
-            max_det=MAX_DETECTIONS, agnostic_nms=False, device=device, verbose=False,
+            max_det=MAX_DETECTIONS, agnostic_nms=False, device=device, verbose=False, augment=tta,
         )
         for image_id, (row, result) in enumerate(zip(batch, results, strict=True), start + 1):
             width, height = row["size"]
@@ -101,16 +103,21 @@ def evaluate(manifest, checkpoint, split, imgsz, device, representation):
                         "bbox": coordinates, "score": float(score),
                     })
 
-    return {
+    report = {
         "split": split, "image_count": len(images), "annotation_count": len(annotations),
         "split_sha256": split_fingerprint(rows),
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
         "ultralytics_version": __version__, "input_size": imgsz, "device": device,
-        "representation": representation,
+        "representation": representation, "tta": tta,
         "ap_score_floor": AP_THRESHOLD, "nms_iou": NMS_IOU, "max_detections": MAX_DETECTIONS,
         **coco_report(images, annotations, predictions),
     }
+    if predictions_output is not None:
+        write_json(predictions_output, {
+            "report": report, "images": images, "annotations": annotations, "predictions": predictions,
+        })
+    return report
 
 
 if __name__ == "__main__":
@@ -125,11 +132,20 @@ if __name__ == "__main__":
     evaluation.add_argument("--split", choices=("val", "test"), required=True)
     evaluation.add_argument("--imgsz", type=int, required=True)
     evaluation.add_argument("--device", default="cpu")
+    evaluation.add_argument("--tta", action="store_true", help="Enable Ultralytics test-time augmentation")
     evaluation.add_argument("--output", type=Path, required=True)
+    evaluation.add_argument("--predictions-output", type=Path)
     args = parser.parse_args()
     if args.command == "prepare":
         prepare(args.manifest, args.destination, args.representation)
     else:
-        report = evaluate(args.manifest, args.checkpoint, args.split, args.imgsz, args.device, args.representation)
+        inputs = {args.manifest.resolve(), args.checkpoint.resolve()}
+        outputs = [path.resolve() for path in (args.output, args.predictions_output) if path is not None]
+        if inputs.intersection(outputs) or len(set(outputs)) != len(outputs):
+            parser.error("Output paths must be distinct and must not replace the manifest or checkpoint")
+        report = evaluate(
+            args.manifest, args.checkpoint, args.split, args.imgsz, args.device, args.representation,
+            tta=args.tta, predictions_output=args.predictions_output,
+        )
         write_json(args.output, report)
         print(f"{args.split}: mAP50:95={report['coco_ap_50_95']:.4f}, AP50={report['coco_ap_50']:.4f}")

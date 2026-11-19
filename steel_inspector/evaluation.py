@@ -30,18 +30,10 @@ def coco_ap(images, annotations, predictions):
     return result["coco_ap_50_95"], result["coco_ap_50"]
 
 
-def coco_report(images, annotations, predictions):
+def coco_match(images, annotations, predictions, *, all_area_only=False):
     from pycocotools.coco import COCO
     from pycocotools.cocoeval import COCOeval
 
-    present_classes = {annotation["category_id"] for annotation in annotations if not annotation.get("iscrowd", 0)}
-    per_class = {
-        name: {"ap50": 0.0 if index in present_classes else None,
-               "ap50_95": 0.0 if index in present_classes else None}
-        for index, name in enumerate(CLASSES, 1)
-    }
-    if not predictions:
-        return {"coco_ap_50_95": 0.0, "coco_ap_50": 0.0, "coco_per_class": per_class}
     dataset = COCO()
     dataset.dataset = {
         "info": {},
@@ -52,7 +44,25 @@ def coco_report(images, annotations, predictions):
     with contextlib.redirect_stdout(io.StringIO()):
         dataset.createIndex()
         evaluator = COCOeval(dataset, dataset.loadRes(predictions), "bbox")
+        if all_area_only:
+            evaluator.params.areaRng = [evaluator.params.areaRng[0]]
+            evaluator.params.areaRngLbl = ["all"]
+            evaluator.params.maxDets = [100]
         evaluator.evaluate()
+    return evaluator
+
+
+def coco_report(images, annotations, predictions):
+    present_classes = {annotation["category_id"] for annotation in annotations if not annotation.get("iscrowd", 0)}
+    per_class = {
+        name: {"ap50": 0.0 if index in present_classes else None,
+               "ap50_95": 0.0 if index in present_classes else None}
+        for index, name in enumerate(CLASSES, 1)
+    }
+    if not predictions:
+        return {"coco_ap_50_95": 0.0, "coco_ap_50": 0.0, "coco_per_class": per_class}
+    evaluator = coco_match(images, annotations, predictions)
+    with contextlib.redirect_stdout(io.StringIO()):
         evaluator.accumulate()
         evaluator.summarize()
     # COCO dimensions are IoU, recall, category, area range, and detection cap.
