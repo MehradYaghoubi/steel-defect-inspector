@@ -364,6 +364,28 @@ We started a controlled training experiment from the existing 320 px checkpoint.
 
 We also tested a second round of same-class suppression on the fused predictions. Hard suppression at IoU 0.45, 0.55, and 0.65 produced 46.78%, 47.36%, and 47.88% mAP@50:95. Gaussian score decay using `exp(-IoU**2 / sigma)` at sigma 0.25, 0.50, and 0.75 produced 47.07%, 47.72%, and 47.84%. All six settings scored below the original 47.96% and were dropped. This experiment operated on the already-fused boxes and used the same validation images and confidence floor.
 
+### Reproducing the candidate training runs
+
+Generate the texture dataset with `python benchmark_yolo.py --manifest data/split.json --representation texture prepare --destination runs/yolo-neudet-texture` in a fresh output directory. The three stages use this dataset with Ultralytics 8.4.11, seed 42, zero data-loader workers, and two PyTorch CPU threads. The two CPU runs used Python 3.14.4 and PyTorch 2.14.0+cpu. The CUDA run used Python 3.11.16, PyTorch 2.8.0+cu126, and an RTX 2060 SUPER. Run the two CPU stages in sequence and the CUDA stage in its own environment.
+
+| Stage | Initialization | Size, epochs, batch | Settings |
+| --- | --- | --- | --- |
+| YOLO11n texture | COCO `yolo11n.pt` | 256, 16, 16 | `optimizer=auto`, selected AdamW at 0.001 with momentum 0.9, `amp=False` |
+| YOLO11n resolution adaptation | `best.pt` from the 256 px stage | 320, 24, 16 | AdamW, `lr0=0.0005`, `lrf=0.10`, `cos_lr=True`, `hsv_h=0`, `hsv_s=0`, `hsv_v=0.20`, `scale=0.25`, `mosaic=0.25`, `close_mosaic=6`, `amp=False` |
+| YOLO11s texture | COCO `yolo11s.pt` | 448, 80, 8 | AdamW, `lr0=0.001`, `lrf=0.05`, `cos_lr=True`, `patience=25`, `hsv_h=0`, `hsv_s=0`, `hsv_v=0.20`, `scale=0.25`, `mosaic=0.50`, `close_mosaic=10`, `amp=True` |
+
+Use `YOLO(start_checkpoint).train(data=dataset_yaml, device=device, imgsz=size, epochs=epochs, batch=batch, workers=0, seed=42, deterministic=True, plots=False, **stage_settings)` with the settings above and the Ultralytics 8.4.11 defaults for unspecified arguments. Use the trained `best.pt` from each branch. The three-pass validation ensemble uses the 320 px checkpoint in both orientations and the 448 px checkpoint in the original orientation, with the same scoring commands and IoU 0.65 fusion described above.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| COCO `yolo11n.pt` | `0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1` |
+| COCO `yolo11s.pt` | `85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5` |
+| Trained YOLO11n 256 px | `d200d37dbb191bb73c35f10a1f887e68ca82b83b6a03db69336dd692644c1996` |
+| Trained YOLO11n 320 px | `a67d5a9d72aee7609cbccf8a9222486f47ade9a7eab19a059ec6d718ac60b64c` |
+| Trained YOLO11s 448 px | `03637fba8ca00a03826b06d9504d4cecfccec31ce3968e264564ce4db1b0ec39` |
+
+The archived 448 px checkpoint produced 2,042 validation detections in the same order on CPU and CUDA. The maximum matched coordinate and score differences were 0.00077 px and 0.00000346, respectively. Both COCO AP scores were identical, including after replacing the CPU YOLO11s predictions with CUDA predictions in the three-pass ensemble. This check covers those devices, the frozen validation split, and this checkpoint.
+
 ### Held-out comparison procedure
 
 Select the candidate pipeline and the matched reference checkpoint using validation, and record their checkpoint hashes, inference settings, and selection rule before scoring the held-out split. The benchmark compares complete detection systems. Our candidate uses COCO-pretrained texture models and multiple inference passes, while DFE-Net uses its released fresh-initialization recipe and one pass on raw images. Report these differences alongside accuracy and latency.
@@ -371,5 +393,7 @@ Select the candidate pipeline and the matched reference checkpoint using validat
 Use the project manifest and `benchmark_yolo.py` for each detector or view, then `fuse_detection_runs.py` for the selected ensemble. Run `compare_detection_runs.py` on the resulting reference and candidate prediction bundles to verify identical ordered images, annotations and evaluation settings, and to compute the candidate-minus-reference AP difference. Report the paired image bootstrap interval and the two absolute scores. The interval quantifies variation across sampled test images for the frozen pair of runs. It does not include variation from training seeds.
 
 We rehearsed the shared scoring path with the archived epoch-11 checkpoint from the live 640 px DFE-Net run. On 270 validation images with 624 boxes, it scored 18.76% mAP@50 and 5.98% mAP@50:95. The checkpoint SHA-256 is `350abbb94800694de928df1fe9e8c75db43f05ea160e657e4887b54f1b518bfc`. The comparison tool verified the snapshot and ensemble bundles on the same ordered validation inputs and completed 1,000 paired draws. This early snapshot exercises the reference checkpoint and evaluation path while training continues for 300 epochs.
+
+For the matched DFE-Net run, prepare the raw dataset with `python benchmark_yolo.py --manifest data/split.json prepare --destination runs/yolo-neudet`. Use the released `yolo11n-dfe-net.yaml` architecture and `train_args_dfe-net.yaml` from the pinned checkout. In addition to dataset and output paths, the archived effective settings differ from that recipe only in seed (42 instead of 0), data-loader workers (0 instead of 4), disabled plots, and `pretrained=False`. The authors' own training script also sets `pretrained=False` for its fresh-initialization experiments. [Pinned DFE-Net training script](https://github.com/hoid1/DFE-Net/blob/936067614ef39325c91b85f77995f648305e08e9/tools/train.py)
 
 UC-DetNet reports 82.8% mAP@50 and 50.1% mAP@50:95. We found no author-provided evaluation weights or exact split manifest for a direct comparison. The continuity regularization study reports a 5.03-point strict mAP improvement from Multi-Continuity on a YOLOv12 experiment at 1280 px with a 6:2:2 split. The authors publish training code, which makes the loss a candidate for a matched ablation. [UC-DetNet, Table II](https://cmsweb.com.sg/rps2prod/ccdc2026/epro/pdf/SatAIS-44.pdf) · [Continuity regularization, Section 4.5](https://arxiv.org/html/2608.17362v1) · [Author implementation](https://github.com/minjong92/Continuity-Driven-Representation-Learning-for-Industrial-Defect-Detection)
