@@ -413,4 +413,16 @@ We rehearsed the shared scoring path with the archived epoch-11 checkpoint from 
 
 For the matched DFE-Net run, prepare the raw dataset with `python benchmark_yolo.py --manifest data/split.json prepare --destination runs/yolo-neudet`. Use the released `yolo11n-dfe-net.yaml` architecture and `train_args_dfe-net.yaml` from the pinned checkout. In addition to dataset and output paths, the archived effective settings differ from that recipe only in seed (42 instead of 0), data-loader workers (0 instead of 4), disabled plots, and `pretrained=False`. The authors' own training script also sets `pretrained=False` for its fresh-initialization experiments. [Pinned DFE-Net training script](https://github.com/hoid1/DFE-Net/blob/936067614ef39325c91b85f77995f648305e08e9/tools/train.py)
 
+The replay command below prepares the raw dataset in a new run directory and trains the pinned model in the DFE-Net environment. It exports only training and validation, records effective arguments and manifest and architecture hashes in `recipe.json`, and writes the trained weights under `dfenet/weights/`.
+
+```bash
+git clone https://github.com/hoid1/DFE-Net.git runs/dfenet-reference
+git -C runs/dfenet-reference checkout --detach 936067614ef39325c91b85f77995f648305e08e9
+python train_dfenet_baseline.py --reference runs/dfenet-reference --manifest data/split.json --output runs/dfenet-replay --device 0
+```
+
+Install the released environment's dependencies before training and expose the checkout on `PYTHONPATH` when scoring a DFE-Net checkpoint with `benchmark_yolo.py`. The local Windows checkout uses the optional-import changes described in the external reproduction section. The replay command restores names for omitted legacy Mamba and DyHead layers required by the upstream parser. Construction raises an error if a selected layer requires an omitted dependency. [Released environment instructions](https://github.com/hoid1/DFE-Net/tree/936067614ef39325c91b85f77995f648305e08e9#1-environment)
+
+The replay command completed a CPU smoke run with `--device cpu --epochs 1 --imgsz 128 --batch 4 --fraction 0.02`. It exported 1,258 training and 270 validation images, trained on the selected 25-image subset, and saved a checkpoint that the shared evaluator scored on all 270 validation images. The smoke checkpoint's AP was zero. The 300-epoch matched result comes from the separate live GPU run.
+
 UC-DetNet reports 82.8% mAP@50 and 50.1% mAP@50:95. We found no author-provided evaluation weights or exact split manifest for a direct comparison. The continuity regularization study reports a 5.03-point strict mAP improvement from Multi-Continuity on a YOLOv12 experiment at 1280 px with a 6:2:2 split. The authors publish training code, which makes the loss a candidate for a matched ablation. [UC-DetNet, Table II](https://cmsweb.com.sg/rps2prod/ccdc2026/epro/pdf/SatAIS-44.pdf) · [Continuity regularization, Section 4.5](https://arxiv.org/html/2608.17362v1) · [Author implementation](https://github.com/minjong92/Continuity-Driven-Representation-Learning-for-Industrial-Defect-Detection)
