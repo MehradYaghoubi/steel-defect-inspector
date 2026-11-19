@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 from .data import CLASSES, preprocess, read_split, write_json
-from .inference import annotate, decode, iou, load_onnx, load_torch
+from .inference import MAX_DETECTIONS, NMS_IOU, annotate, decode, iou, load_onnx, load_torch
 
 AP_THRESHOLD = 0.01
 MATCH_IOU = 0.5
@@ -145,11 +145,18 @@ def save_examples(output, root, examples, key):
     return selected
 
 
-def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu", tune_threshold=False, flip_ensemble=False):
+def evaluate(
+    manifest, checkpoint, output, *, split, threshold=0.25, device="cpu",
+    tune_threshold=False, flip_ensemble=False, predictions_output=None,
+):
     if not 0 < threshold <= 1:
         raise ValueError("Threshold must be in (0, 1]")
     if tune_threshold and split != "val":
         raise ValueError("Threshold tuning requires the validation split")
+    inputs = {Path(manifest).resolve(), Path(checkpoint).resolve()}
+    outputs = [Path(path).resolve() for path in (output, predictions_output) if path is not None]
+    if inputs.intersection(outputs) or len(set(outputs)) != len(outputs):
+        raise ValueError("Output paths must be distinct and must not replace the manifest or checkpoint")
     root, rows = read_split(manifest, split)
     runtime = load_torch(checkpoint, device=device, flip_ensemble=flip_ensemble)
     images, annotations, predictions, false_examples, missed_examples = [], [], [], [], []
@@ -212,11 +219,16 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
     results = {
         "split": split,
         "image_count": len(images),
+        "annotation_count": len(annotations),
         "split_sha256": split_fingerprint(rows),
+        "manifest_sha256": hashlib.sha256(Path(manifest).read_bytes()).hexdigest(),
         "checkpoint_sha256": hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest(),
         "flip_ensemble": flip_ensemble,
+        "input_size": runtime.size,
         **coco,
         "ap_score_floor": AP_THRESHOLD,
+        "nms_iou": NMS_IOU,
+        "max_detections": MAX_DETECTIONS,
         "error_score_threshold": threshold,
         "error_match_iou": MATCH_IOU,
         "micro_at_threshold": operating_point(
@@ -230,6 +242,10 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
     if tune_threshold:
         results["threshold_sweep"] = sweep
     write_json(output, results)
+    if predictions_output is not None:
+        write_json(predictions_output, {
+            "report": results, "images": images, "annotations": annotations, "predictions": predictions,
+        })
     print(f"{split}: {len(images)} images, mAP50:95={coco['coco_ap_50_95']:.4f}, "
           f"AP50={coco['coco_ap_50']:.4f}")
     return results

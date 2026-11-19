@@ -36,6 +36,7 @@ def main():
     operating_point.add_argument("--threshold", type=float, default=0.25)
     operating_point.add_argument("--tune-threshold", action="store_true", help="Select the confidence threshold by validation F1")
     evaluate.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    evaluate.add_argument("--predictions-output", type=Path, help="Write a matched COCO prediction bundle")
 
     export = actions.add_parser("export", help="Export the checkpoint to ONNX")
     path_argument(export, "checkpoint")

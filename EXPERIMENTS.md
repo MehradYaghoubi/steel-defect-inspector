@@ -169,3 +169,30 @@ Jeong and Song released their benchmark manifests, training arguments and per-ru
 The downloaded archive matched its published MD5. Its NEU-DET manifest has 1,259 train, 269 validation and 271 test images. After removing the Roboflow filename suffix, 185 of our test filenames matched the authors' training split and 41 matched their test split. Use their results as an external reference. A direct test comparison requires a clean retraining and the same images and annotations.
 
 At epoch 7 the texture advantage seen at epoch 3 did not persist. Raw YOLO11n reached 65.63% mAP@50 and 30.00% mAP@50:95, compared with 60.04% and 28.08% for texture. Crazing AP@50 was 27.82% raw and 26.53% texture. The raw run reached 73.18% mAP@50 and 38.81% mAP@50:95 at epoch 13. These scores use project validation and the shared COCO evaluator.
+
+### Validation-only checkpoint fusion pilot
+
+This pilot grouped same-class detections across checkpoints at IoU 0.55, allowing at most one box per checkpoint in each group. It averaged coordinates weighted by confidence and divided the sum of confidence scores by the number of checkpoints. All input and output bundles use the audited 270-image validation split and the shared COCO scorer. The fusion is inspired by weighted boxes fusion. [Method paper](https://arxiv.org/abs/1910.13302)
+
+| Validation predictions | mAP@50 | mAP@50:95 |
+| --- | ---: | ---: |
+| Raw epoch 13, single checkpoint | 73.18% | 38.81% |
+| Raw epochs 9 and 13 | 74.81% | 39.55% |
+| Raw epoch 13 and texture epoch 7 | 71.76% | 37.68% |
+| All three checkpoints | 73.85% | 38.83% |
+
+Against raw epoch 13, the two-raw-checkpoint fusion gained 0.74 percentage points in mAP@50:95 (95% paired image bootstrap interval [-0.28, +1.68]) and 1.64 points in mAP@50 (interval [-0.13, +2.93]). Both intervals span zero. Keep single-checkpoint inference as the default and report the fusion as a development experiment.
+
+### Completed raw YOLO11n development run
+
+The 16-epoch raw run is complete. Both the best and last checkpoints scored 73.79% mAP@50 and 39.54% mAP@50:95 on the audited 270-image validation split. Compared with the 192 px incumbent, the gains were 14.03 and 16.94 percentage points, respectively. The checkpoints had different file hashes and identical aggregate and class AP on validation. The best checkpoint SHA-256 is d19cd01f7dc4c49853810629b50bc23f055ae6d394bb8c5a922db0e52c444633.
+
+The incumbent evaluator now exports the same prediction-bundle format as the YOLO evaluator. This allows paired COCO intervals between architectures on an identical split without running inference again.
+
+~~~bash
+python -m steel_inspector evaluate --manifest data/split.json --checkpoint runs/precision192-e35.pt --split val --output runs/incumbent-matched-val.json --predictions-output runs/incumbent-matched-predictions.json --threshold 0.34 --flip-ensemble
+python benchmark_yolo.py --manifest data/split.json evaluate --checkpoint runs/detect/runs/yolo11n-seed42/weights/best.pt --split val --imgsz 256 --output runs/yolo11n-seed42-final-best-val.json --predictions-output runs/yolo11n-seed42-final-best-predictions.json
+python compare_detection_runs.py --baseline runs/incumbent-matched-predictions.json --candidate runs/yolo11n-seed42-final-best-predictions.json --repetitions 1000 --seed 42 --output runs/incumbent-vs-yolo11n-final-paired-val.json
+~~~
+
+The paired comparison used 1,000 draws with seed 42. The mAP@50 gain was 14.03 points (95% interval [9.61, 17.28]). The mAP@50:95 gain was 16.94 points (95% interval [14.33, 19.29]). This estimates the variation across these validation images for two fixed checkpoints.
