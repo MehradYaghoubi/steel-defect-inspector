@@ -146,7 +146,7 @@ Both runs used the same training and validation images, normalized boxes, initia
 
 DFE-Net also completed a one-epoch engineering run from fresh weights, using a 25-image subset of project training and all 270 validation images. The run saved a checkpoint that the shared COCO evaluator could load and score. This run used 128 px input and only checks the training-to-evaluation path.
 
-The next full GPU candidate is COCO-pretrained YOLO11s at 448 px, seed 42, up to 80 epochs, batch 8, AdamW with a 0.001 initial learning rate and cosine decay. The planned run was updated to use the texture representation before launch based on the final YOLO11n validation comparison below. The split and COCO evaluator stay fixed. The GPU recipe uses no hue or saturation shifts. CUDA installation is pending.
+The next full GPU candidate is COCO-pretrained YOLO11s at 448 px, seed 42, up to 80 epochs, batch 8, AdamW with a 0.001 initial learning rate and cosine decay. The planned run was updated to use the texture representation before launch based on the final YOLO11n validation comparison below. The split and COCO evaluator stay fixed. The GPU recipe uses no hue or saturation shifts. CUDA is installed and training has started, as recorded below.
 
 ### Inference settings and uncertainty
 
@@ -234,10 +234,28 @@ These results are validation-only. The reproduced DFE-Net metrics are from its a
 
 ### Texture resolution adaptation
 
-The final 256 px texture checkpoint scored 70.75% mAP@50 and 33.04% mAP@50:95 when run at 320 px without training at that resolution. At 256 px, the same weights scored 76.16% and 42.94% on the same 270 validation images. The 9.90-point mAP@50:95 decrease motivated a separate 320 px fine-tuning run from the texture checkpoint. The run uses 24 epochs, AdamW with a 0.0005 initial learning rate, cosine decay, and weaker scale and mosaic augmentation. It uses the original audited train and validation partitions. Evaluate its trained 320 px checkpoint against both the unchanged 320 px control and the 256 px starting result. The first warm-up epoch reached 63.41% mAP@50 and 30.14% mAP@50:95 with the shared COCO evaluator. The fine-tuning run is in progress.
+The final 256 px texture checkpoint scored 70.75% mAP@50 and 33.04% mAP@50:95 when run at 320 px without training at that resolution. At 256 px, the same weights scored 76.16% and 42.94% on the same 270 validation images. The 9.90-point mAP@50:95 decrease motivated a separate 320 px fine-tuning run from the texture checkpoint. The run uses 24 epochs, AdamW with a 0.0005 initial learning rate, cosine decay, and weaker scale and mosaic augmentation. It uses the original audited train and validation partitions. Evaluate its trained 320 px checkpoint against both the unchanged 320 px control and the 256 px starting result. The first warm-up epoch reached 63.41% mAP@50 and 30.14% mAP@50:95 with the shared COCO evaluator. The fine-tuning run completed all 24 epochs. Final scores appear below.
 
 ### Frozen split verification
 
 Rebuilding the manifest from the source images and Pascal VOC annotations with seed 42 reproduced the same ordered image digests, classes, boxes, split assignments and annotation-audit counts. The existing manifest SHA-256 remained 3e278f74bf136cbcd149a0281ed8e3b661df24f8ad9c0ec3c1d1819ebd4dcead. Both YOLO dataset exports matched all 1,258 training and 270 validation records. Raw copies matched source bytes, texture images matched the deterministic transform, and normalized labels matched the manifest within nine-decimal rounding. Both exports contained train and validation images.
 
 As an additional screen for cross-split near duplicates, we compared the signs relative to the median of 63 low-frequency DCT coefficients from 32 px grayscale images. We checked original and horizontally flipped versions and flagged Hamming distance at most four. This screen flagged no pair. Crops, stronger transformations and shared acquisition conditions remain outside this check.
+
+### Completed resolution adaptation and second seed
+
+On the same 270 validation images, the fine-tuned 320 px checkpoint reached 78.84% mAP@50 and 44.17% mAP@50:95. Against the 256 px starting checkpoint, the gains were 2.68 points (95% paired image interval [0.50, 4.76]) and 1.23 points (interval [-0.66, 3.02]), respectively. The 320 px run changed the learning rate schedule and augmentation as well as the resolution. Its result measures the combined recipe.
+
+| 256 px development model | Seed | mAP@50 | mAP@50:95 |
+| --- | ---: | ---: | ---: |
+| Raw YOLO11n | 42 | 73.79% | 39.54% |
+| Texture YOLO11n | 42 | 76.16% | 42.94% |
+| Raw YOLO11n | 43 | 75.94% | 40.89% |
+| Texture YOLO11n | 43 | 74.22% | 40.36% |
+| Texture fusion | 42 and 43 | 77.54% | 43.89% |
+
+The texture effect was +3.40 mAP@50:95 points for seed 42 and -0.53 points for seed 43 (paired image interval [-2.27, 1.11] for seed 43). The two arms used two CPU threads each in the seed-43 comparison. Built-in TTA with the final seed-42 texture weights scored 75.26% mAP@50 and 40.89% mAP@50:95. Its mAP@50:95 difference from single-pass inference was -2.06 points (interval [-3.24, -0.71], 500 paired draws). Single-pass inference remains the default.
+
+### GPU training started
+
+The CUDA environment uses CPython 3.11.16, PyTorch 2.8.0+cu126, torchvision 0.23.0+cu126 and Ultralytics 8.4.11 on an RTX 2060 SUPER. The first YOLO11s training attempt ran through validation but failed before its first checkpoint while Polars 2.1.0 checked CPU flags. Pinning Polars 1.31.0 resolved the import failure. The restarted run saved its first checkpoint and reached epoch 2. It uses the prepared texture dataset at 448 px, seed 42, batch size 8, AdamW, and up to 80 epochs. The test split has been reserved for final comparison.
