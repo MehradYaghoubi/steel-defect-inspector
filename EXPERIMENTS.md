@@ -76,6 +76,8 @@ The local ONNX model is `runs/detector.onnx`. Aggregate results and annotated sa
 
 Match or exceed the strongest reproducible published detector on NEU-DET. Track COCO mAP@50:95 as the primary metric and mAP@50, AP by defect category, and CPU latency as secondary results. The published MBY result (85.8% mAP@50 and 56.2% mAP@50:95) gives a numerical target. Its scores and our current test scores are from separate evaluations. [MBY, Table 7](https://pmc.ncbi.nlm.nih.gov/articles/PMC12349437/)
 
+The MBY article's availability statement points to the article and the corresponding author. We found no author-provided training code, weights, or exact split manifest for a direct comparison. [MBY availability statement](https://www.mdpi.com/1424-8220/25/15/4817)
+
 - Use the existing audited split for initial model development. Its manifest SHA-256 is 3e278f74bf136cbcd149a0281ed8e3b661df24f8ad9c0ec3c1d1819ebd4dcead. Select checkpoints and settings with the 270 validation images.
 - Establish a pretrained YOLO11n baseline. Compare it with the current detector using the same annotations, COCO evaluator, confidence floor, NMS IoU and maximum detections per image.
 - Use the released DFE-Net split, weights and evaluation script as a reproduction check. The authors also used the 360-image evaluation split for checkpoint selection. Record that result separately, audit for duplicate pixels across splits and seek reproducible releases from stronger published methods. [DFE-Net release](https://github.com/hoid1/DFE-Net/tree/936067614ef39325c91b85f77995f648305e08e9)
@@ -266,6 +268,8 @@ SLF-YOLO reports 80.0% mAP@50 and 49.0% mAP@50:95 under its own 8:1:1 split. The
 
 At that revision the released training loss calls CIoU, and the repository tree contains neither evaluation weights nor a NEU-DET split manifest. A retrained result from the available code would therefore be an architecture comparison using CIoU. The reported 49.0% stays an external reference under a separate protocol. [Released box loss](https://github.com/zacianfans/SLF-YOLO/blob/da113f16d8a46b0543f13366b0d3c1f2ae445d24/SLF-YOLO/ultralytics/utils/loss.py#L102)
 
+We implemented the piecewise overlap term from equations 14–20 locally and used it in the released architecture's box regression loss. Distribution focal loss and assignment stayed as released. We expanded both box dimensions by a factor of 1.20, clipped negative overlap lengths to zero, and mapped the resulting IoU into [0, 1] using lower and upper cutoffs of 0.00 and 0.95. The ratio is a local choice and the cutoffs come from the Focaler-IoU reference. The SLF-YOLO paper describes admissible ranges, so these settings are an independent implementation choice. Identical, overlapping and disjoint boxes passed numerical checks, including finite gradients. A 128 px CPU preflight trained on 25 project training images, saved and reloaded a checkpoint, and ran the shared evaluator on all 270 validation images. The smoke checkpoint produced zero AP at the shared confidence floor. Full training with this loss is pending. [SLF-YOLO loss equations](https://www.nature.com/articles/s41598-025-94936-9) · [Focaler-IoU reference](https://github.com/malagoutou/Focaler-IoU/blob/main/focaleriou.py)
+
 In the 448 px YOLO11s run, the shared COCO evaluator scored the epoch-10 checkpoint at 60.58% mAP@50 and 26.77% mAP@50:95. At epoch 20 it reached 67.14% and 34.77%, respectively, on the same validation split. These are development checkpoints from the ongoing 80-epoch run. The 640 px DFE-Net GPU preflight also completed training on a small subset, saved a checkpoint and evaluated it on the 270 validation images with the shared evaluator. Full DFE-Net training remains queued.
 
 The archived epoch-30 checkpoint reached 75.92% mAP@50 and 39.45% mAP@50:95 on the same 270 images. Its SHA-256 is `6427c1eca0a250ea1395dd09b618bc761b5ecb4be79cdb19870026a9a250a7fb`.
@@ -311,6 +315,17 @@ We combined the 320 px YOLO11n and the 448 px YOLO11s texture checkpoints using 
 | YOLO11s, 448 px, epoch 60 | — | 77.89% | 43.43% |
 | YOLO11n and epoch-60 YOLO11s | 0.65 | 79.82% | 46.96% |
 | YOLO11n original and reflected views, plus epoch-60 YOLO11s | 0.65 | 79.34% | 47.15% |
+| YOLO11s, 448 px, epoch 70 | — | 77.18% | 43.89% |
+| YOLO11n and epoch-70 YOLO11s | 0.65 | 79.41% | 47.03% |
+| YOLO11n original and reflected views, plus epoch-70 YOLO11s | 0.65 | 79.64% | 47.77% |
+| YOLO11s, 448 px, best checkpoint from completed run | — | 78.49% | 44.79% |
+| YOLO11n and best YOLO11s | 0.65 | 80.30% | 47.87% |
+| YOLO11n original and reflected views, plus best YOLO11s | 0.65 | 79.89% | **47.96%** |
+| YOLO11s, 448 px, last checkpoint from completed run | — | 76.80% | 44.25% |
+| YOLO11n and last YOLO11s | 0.65 | 79.32% | 47.45% |
+| YOLO11n original and reflected views, plus last YOLO11s | 0.65 | 79.85% | 47.89% |
+
+YOLO11s completed 80 epochs. The best and last checkpoint SHA-256 hashes are `03637fba8ca00a03826b06d9504d4cecfccec31ce3968e264564ce4db1b0ec39` and `61831a89e28b0191571a5a704eb5b95925461c0c510ed50bb9188a9d5f78cec7`. The three-pass ensemble using the completed run's best checkpoint gained 0.18 strict mAP points over its epoch-50 counterpart (95% interval [-0.49, 0.95], 1,000 paired image draws). The matched DFE-Net run then started from fresh weights with 640 px inputs, batch 16, seed 42, and the 300-epoch released training recipe. It saved its first checkpoint. Its held-out evaluation is pending.
 
 At fusion IoU 0.65, the epoch-30 pair improved mAP@50:95 by 1.78 points over YOLO11n alone (95% interval [0.65, 2.80], 1,000 paired image draws). All six class APs improved at this setting. Crazing remained the weakest class, at 17.82% AP@50:95. The validation set was also used to choose the fusion IoU, so the interval describes that fixed pair of predictions on validation. The epoch-40 checkpoint SHA-256 is `e6d6696127a9839c77a63c3d293992438c72b36c2aedfd074166f9098cdeb687`.
 
@@ -324,7 +339,9 @@ At the validation operating point with at least 85% micro precision, the epoch-3
 
 Using the 320 px model, we predicted on horizontally reflected, vertically reflected, and 180-degree rotated versions of the preprocessed images. Boxes were mapped back to original image coordinates before fusion. At IoU 0.65, combining the original and horizontal views scored 79.30% mAP@50 and 45.83% mAP@50:95. The original and vertical views reached 43.43% strict mAP. Fusing all four views reached 44.75%. The horizontal pair gained 1.66 strict mAP points over the original view (95% interval [0.82, 2.65], 1,000 paired image draws). Adding the horizontal view to the epoch-50 pair gave the three-pass result above. All view choices used validation data.
 
-The three-pass ensemble gained 0.51 strict mAP points over the two-detector epoch-50 pair (95% interval [-0.24, 1.29], 1,000 paired image draws). On the same 90 CPU timing images, the original and horizontal pair took 87.9 ms at the median and 118.2 ms at the 95th percentile. The single view took 41.6 ms and 60.4 ms in that timing run. The three-pass ensemble has yet to be timed.
+The three-pass ensemble gained 0.51 strict mAP points over the two-detector epoch-50 pair (95% interval [-0.24, 1.29], 1,000 paired image draws). On the same 90 CPU timing images, the original and horizontal pair took 87.9 ms at the median and 118.2 ms at the 95th percentile. The single view took 41.6 ms and 60.4 ms in that timing run. In a separate alternating-order run with the epoch-50 checkpoint, the two-detector pair took 178.2 ms at the median and 267.3 ms at the 95th percentile. The three-pass ensemble took 220.8 ms and 294.4 ms. Each measurement shared decoding and texture preprocessing across passes and included fusion.
+
+Of seven score-weight settings on the three-pass epoch-50 ensemble, the highest validation strict mAP used score multipliers of 1.0, 0.5 and 1.0 for the original 320 px view, reflected 320 px view, and 448 px view, respectively. The 47.98% strict mAP was 0.19 points above equal weights (95% interval [-0.23, 0.61], 1,000 paired image draws). We retain equal weights as the primary comparison because the gain is uncertain and the validation set selected the multipliers.
 
 To reproduce the pair, score the same 320 px checkpoint twice with `benchmark_yolo.py --manifest data/split.json --representation texture evaluate --checkpoint PATH --split val --imgsz 320 --device cpu`. Supply a distinct `--output` and `--predictions-output` for each run, and include `--flip-horizontal` on the second run. Pass both prediction files to `fuse_detection_runs.py --members ORIGINAL REFLECTED --iou 0.65 --output FUSION`. We reran this workflow and reproduced the pilot predictions exactly.
 
