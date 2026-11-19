@@ -396,6 +396,19 @@ We also tested a 256 px YOLO11n member in place of or in addition to the reflect
 
 Against the original, adding raw seed 42 gained 0.26 mAP@50:95 points (95% paired image interval [-0.33, 0.77]). Replacing the reflected view with raw seed 43 gained 0.12 points (interval [-0.75, 0.79]). Both intervals use 1,000 paired image draws and describe settings explored on the same validation data. The original remains the primary candidate because the observed strict mAP changes are small and the raw variants add a separate checkpoint.
 
+### Grouping the three views
+
+We tested hierarchical fusion on the same saved predictions. One order fused the two YOLO11n views first and then combined that output with YOLO11s. The other order fused the two original-orientation models first and then included the reflected view. Every fusion stage used the same IoU 0.65 clustering, score floor, and detection cap.
+
+| Fusion configuration | Final YOLO11s checkpoint mAP@50:95 | Epoch-50 YOLO11s checkpoint mAP@50:95 |
+| --- | ---: | ---: |
+| Direct three-pass fusion | 47.96% | 47.78% |
+| Direct two-pass fusion | 47.87% | 47.27% |
+| Group the two YOLO11n views first | 48.21% | 47.67% |
+| Group the two original-orientation models first | 47.43% | 47.42% |
+
+For the final checkpoint, grouping both YOLO11n views gained 0.25 strict mAP points over direct three-pass fusion (95% interval [-0.27, 0.66], 1,000 paired image draws). Dropping the reflected pass changed strict mAP by -0.09 points (interval [-0.78, 0.50]). The grouping result varied across checkpoints, and the direct three-pass configuration remains the primary research candidate.
+
 ### Accuracy by box size and overlap threshold
 
 The validation annotations contain 62 boxes below 32² original-image pixels, 423 from 32² up to 96², and 139 of at least 96². The same COCO evaluator reports the following size and overlap breakdown.
