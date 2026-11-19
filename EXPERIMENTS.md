@@ -364,6 +364,23 @@ We started a controlled training experiment from the existing 320 px checkpoint.
 
 We also tested a second round of same-class suppression on the fused predictions. Hard suppression at IoU 0.45, 0.55, and 0.65 produced 46.78%, 47.36%, and 47.88% mAP@50:95. Gaussian score decay using `exp(-IoU**2 / sigma)` at sigma 0.25, 0.50, and 0.75 produced 47.07%, 47.72%, and 47.84%. All six settings scored below the original 47.96% and were dropped. This experiment operated on the already-fused boxes and used the same validation images and confidence floor.
 
+### Box voting and ensemble diversity
+
+We tried a second coordinate pass on the frozen fused predictions. Each source view contributed its nearest same-class box by IoU. If at least two boxes met the overlap cutoff, we moved the fused box halfway toward their coordinate average, weighting each vote by its confidence times squared overlap. Scores and the set of predictions stayed fixed. At cutoffs 0.45, 0.55, and 0.65, strict mAP on the completed YOLO11s ensemble was 48.02%, 47.99%, and 47.91%. At 0.45, the epoch-50 ensemble moved from 47.78% to 47.80%. The changes were small, so we retained the original fusion.
+
+We also tested a 256 px YOLO11n member in place of or in addition to the reflected view, using the same equal-weight fusion and IoU 0.65 cutoff. All rows use the same 270 validation images.
+
+| Ensemble | Inference passes | mAP@50 | mAP@50:95 |
+| --- | ---: | ---: | ---: |
+| Original three-pass ensemble | 3 | 79.89% | 47.96% |
+| Add raw seed 42 | 4 | 81.08% | 48.22% |
+| Add raw seed 43 | 4 | 80.87% | 48.19% |
+| Add texture seed 43 | 4 | 80.84% | 47.82% |
+| Replace reflected view with raw seed 43 | 3 | 81.13% | 48.09% |
+| Replace reflected view with texture seed 43 | 3 | 80.10% | 47.72% |
+
+Against the original, adding raw seed 42 gained 0.26 mAP@50:95 points (95% paired image interval [-0.33, 0.77]). Replacing the reflected view with raw seed 43 gained 0.12 points (interval [-0.75, 0.79]). Both intervals use 1,000 paired image draws and describe settings explored on the same validation data. The original remains the primary candidate because the observed strict mAP changes are small and the raw variants add a separate checkpoint.
+
 ### Reproducing the candidate training runs
 
 Generate the texture dataset with `python benchmark_yolo.py --manifest data/split.json --representation texture prepare --destination runs/yolo-neudet-texture` in a fresh output directory. The three stages use this dataset with Ultralytics 8.4.11, seed 42, zero data-loader workers, and two PyTorch CPU threads. The two CPU runs used Python 3.14.4 and PyTorch 2.14.0+cpu. The CUDA run used Python 3.11.16, PyTorch 2.8.0+cu126, and an RTX 2060 SUPER. Run the two CPU stages in sequence and the CUDA stage in its own environment.
