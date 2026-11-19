@@ -489,4 +489,26 @@ Install the released environment's dependencies before training and expose the c
 
 The replay command completed a CPU smoke run with `--device cpu --epochs 1 --imgsz 128 --batch 4 --fraction 0.02`. It exported 1,258 training and 270 validation images, trained on the selected 25-image subset, and saved a checkpoint that the shared evaluator scored on all 270 validation images. The smoke checkpoint's AP was zero. The 300-epoch matched result comes from the separate live GPU run.
 
+### Matched held-out result
+
+The two systems used 1,258 training images and 270 validation images. We fixed the checkpoints and evaluation settings in commit `16e76fd` before scoring the 270 test images and 656 annotations. The paired comparison verifies identical ordered inputs and the shared evaluator settings. The test split SHA-256 is `8baf8f81e8c794f358c847ddb81fe07d051308058260e21bd7923c103b445805`. [Pre-test freeze](https://github.com/MehradYaghoubi/steel-defect-inspector/blob/16e76fd/EXPERIMENTS.md#frozen-selection-before-test) · [Aggregate evidence](docs/matched-test.json)
+
+| System | Test mAP@50 | Test mAP@50:95 |
+| --- | ---: | ---: |
+| DFE-Net, matched retraining | 74.07% | 40.21% |
+| Three-pass YOLO11 | 77.04% | 43.78% |
+| Difference in percentage points | +2.97 | +3.57 |
+| 95% paired image interval | +0.48 to +5.43 | +1.89 to +4.87 |
+
+| Class | DFE-Net AP@50:95 | Three-pass YOLO11 AP@50:95 |
+| --- | ---: | ---: |
+| Crazing | 14.57% | 20.82% |
+| Inclusion | 41.01% | 44.54% |
+| Patches | 60.55% | 65.73% |
+| Pitted surface | 48.65% | 49.81% |
+| Rolled-in scale | 25.60% | 28.11% |
+| Scratches | 50.89% | 53.66% |
+
+This is a single-seed, whole-system comparison. The candidate uses COCO-pretrained checkpoints and three texture passes. DFE-Net uses fresh initialization and a single pass on raw images. The image bootstrap interval quantifies sampling uncertainty for this fixed pair and split. Training-seed variability and comparative DFE-Net latency are pending. Earlier versions of the demo report scores on this split, while the candidate checkpoints and fusion settings were selected on validation. Published MBY and SLF-YOLO results remain separate protocol references, and a benchmark-wide ranking remains unverified.
+
 UC-DetNet reports 82.8% mAP@50 and 50.1% mAP@50:95. We found no author-provided evaluation weights or exact split manifest for a direct comparison. The continuity regularization study reports a 5.03-point strict mAP improvement from Multi-Continuity on a YOLOv12 experiment at 1280 px with a 6:2:2 split. The authors publish training code, which makes the loss a candidate for a matched ablation. [UC-DetNet, Table II](https://cmsweb.com.sg/rps2prod/ccdc2026/epro/pdf/SatAIS-44.pdf) · [Continuity regularization, Section 4.5](https://arxiv.org/html/2608.17362v1) · [Author implementation](https://github.com/minjong92/Continuity-Driven-Representation-Learning-for-Industrial-Defect-Detection)

@@ -8,7 +8,7 @@ The six classes are crazing, inclusion, patches, pitted surface, rolled-in scale
 
 ## Research benchmark
 
-The current three-pass YOLO11 candidate scored **79.89% AP@50** and **47.96% mAP@50:95** on 270 validation images. The benchmark uses an audited split and a shared COCO evaluator. The matched DFE-Net run uses the same training and validation assignments, with the held-out comparison scheduled after checkpoint selection. [Candidate training and checkpoint hashes](EXPERIMENTS.md#reproducing-the-candidate-training-runs) · [Reference replay and comparison](EXPERIMENTS.md#held-out-comparison-procedure)
+On 270 NEU-DET test images, the three-pass YOLO11 system scored **43.78% mAP@50:95**, compared with **40.21%** for DFE-Net retrained on the same project split. The improvement was **3.57 percentage points** (95% paired image interval **1.89 to 4.87**). Both systems used the shared COCO evaluator and one training seed. The result supports a comparison with this DFE-Net reproduction on this split. [Test results and limits](EXPERIMENTS.md#matched-held-out-result) · [Machine-readable report](docs/matched-test.json)
 
 ## Run the demo
 
