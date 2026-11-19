@@ -381,6 +381,19 @@ We also tested a 256 px YOLO11n member in place of or in addition to the reflect
 
 Against the original, adding raw seed 42 gained 0.26 mAP@50:95 points (95% paired image interval [-0.33, 0.77]). Replacing the reflected view with raw seed 43 gained 0.12 points (interval [-0.75, 0.79]). Both intervals use 1,000 paired image draws and describe settings explored on the same validation data. The original remains the primary candidate because the observed strict mAP changes are small and the raw variants add a separate checkpoint.
 
+### Accuracy by box size and overlap threshold
+
+The validation annotations contain 62 boxes below 32² original-image pixels, 423 from 32² up to 96², and 139 of at least 96². The same COCO evaluator reports the following size and overlap breakdown.
+
+| Configuration | Small AP | Medium AP | Large AP | AP@75 | AP@90 | AP@95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Texture YOLO11n, 320 px | 30.72% | 40.21% | 55.03% | 41.12% | 10.87% | 4.14% |
+| Texture YOLO11s, 448 px | 28.73% | 39.93% | 57.07% | 43.32% | 11.13% | 4.56% |
+| Three passes | 28.87% | 43.68% | 60.11% | 48.26% | 13.04% | 4.91% |
+| Four passes with raw seed 42 | 32.22% | 43.83% | 60.42% | 48.79% | 12.99% | 5.75% |
+
+We tested two adjustments based on predicted area below 32² pixels. Halving the 448 px member's scores for those predictions changed the three-pass strict mAP from 47.96% to 48.00%. Including the raw fourth member only for small predicted boxes scored 47.42%. We retained the original three-pass setup. The size breakdown comes from one validation split and has relatively few small annotations.
+
 ### Reproducing the candidate training runs
 
 Generate the texture dataset with `python benchmark_yolo.py --manifest data/split.json --representation texture prepare --destination runs/yolo-neudet-texture` in a fresh output directory. The three stages use this dataset with Ultralytics 8.4.11, seed 42, zero data-loader workers, and two PyTorch CPU threads. The two CPU runs used Python 3.14.4 and PyTorch 2.14.0+cpu. The CUDA run used Python 3.11.16, PyTorch 2.8.0+cu126, and an RTX 2060 SUPER. Run the two CPU stages in sequence and the CUDA stage in its own environment.
@@ -410,6 +423,8 @@ Select the candidate pipeline and the matched reference checkpoint using validat
 Use the project manifest and `benchmark_yolo.py` for each detector or view, then `fuse_detection_runs.py` for the selected ensemble. Run `compare_detection_runs.py` on the resulting reference and candidate prediction bundles to verify identical ordered images, annotations and evaluation settings, and to compute the candidate-minus-reference AP difference. Report the paired image bootstrap interval and the two absolute scores. The interval quantifies variation across sampled test images for the frozen pair of runs. It does not include variation from training seeds.
 
 We rehearsed the shared scoring path with the archived epoch-11 checkpoint from the live 640 px DFE-Net run. On 270 validation images with 624 boxes, it scored 18.76% mAP@50 and 5.98% mAP@50:95. The checkpoint SHA-256 is `350abbb94800694de928df1fe9e8c75db43f05ea160e657e4887b54f1b518bfc`. The comparison tool verified the snapshot and ensemble bundles on the same ordered validation inputs and completed 1,000 paired draws. This early snapshot exercises the reference checkpoint and evaluation path while training continues for 300 epochs.
+
+At epoch 30, DFE-Net reached 47.84% mAP@50 and 20.99% mAP@50:95 on the same images and shared evaluator. The archived checkpoint SHA-256 is `f39ee54dde910b3c2340197d3f8a3a42a204d2ff0e9e80d82c6c7961d7843205`. The training logger showed 20.06% strict mAP at this epoch with its native evaluator. The authors' seed-42 log showed 20.76% at the same epoch on their validation split. These checkpoints describe early convergence under their respective protocols. [Released seed-42 training log](https://github.com/hoid1/DFE-Net/blob/936067614ef39325c91b85f77995f648305e08e9/runs/detect/runs/ours-neudet-seed42/results.csv)
 
 For the matched DFE-Net run, prepare the raw dataset with `python benchmark_yolo.py --manifest data/split.json prepare --destination runs/yolo-neudet`. Use the released `yolo11n-dfe-net.yaml` architecture and `train_args_dfe-net.yaml` from the pinned checkout. In addition to dataset and output paths, the archived effective settings differ from that recipe only in seed (42 instead of 0), data-loader workers (0 instead of 4), disabled plots, and `pretrained=False`. The authors' own training script also sets `pretrained=False` for its fresh-initialization experiments. [Pinned DFE-Net training script](https://github.com/hoid1/DFE-Net/blob/936067614ef39325c91b85f77995f648305e08e9/tools/train.py)
 
