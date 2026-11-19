@@ -62,8 +62,12 @@ def prepare(manifest, destination, representation):
     write_json(destination / "dataset.yaml", config)
 
 
-def evaluate(manifest, checkpoint, split, imgsz, device, representation, *, tta=False, predictions_output=None):
+def evaluate(
+    manifest, checkpoint, split, imgsz, device, representation, *,
+    tta=False, flip_horizontal=False, predictions_output=None,
+):
     from ultralytics import YOLO, __version__
+    from ultralytics.utils.patches import imread
 
     root, rows = read_split(manifest, split)
     model = YOLO(str(checkpoint))
@@ -77,6 +81,13 @@ def evaluate(manifest, checkpoint, split, imgsz, device, representation, *, tta=
         batch = rows[start:start + 8]
         paths = [root / row["file"] for row in batch]
         sources = [texture_image(path) for path in paths] if representation == "texture" else list(map(str, paths))
+        if flip_horizontal:
+            if representation == "raw":
+                sources = [imread(str(path)) for path in paths]
+            for index, (path, source) in enumerate(zip(paths, sources, strict=True)):
+                if source is None:
+                    raise ValueError(f"Cannot decode {path}")
+                sources[index] = source[:, ::-1].copy()
         results = model.predict(
             sources,
             imgsz=imgsz, conf=AP_THRESHOLD, iou=NMS_IOU,
@@ -96,7 +107,10 @@ def evaluate(manifest, checkpoint, split, imgsz, device, representation, *, tta=
                 })
             boxes = result.boxes.cpu()
             for box, score, label in zip(boxes.xyxy, boxes.conf, boxes.cls, strict=True):
-                coordinates = xywh(box.tolist())
+                x1, y1, x2, y2 = box.tolist()
+                if flip_horizontal:
+                    x1, x2 = width - x2, width - x1
+                coordinates = xywh([x1, y1, x2, y2])
                 if min(coordinates[2:]) > 0:
                     predictions.append({
                         "image_id": image_id, "category_id": int(label) + 1,
@@ -109,7 +123,7 @@ def evaluate(manifest, checkpoint, split, imgsz, device, representation, *, tta=
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
         "ultralytics_version": __version__, "input_size": imgsz, "device": device,
-        "representation": representation, "tta": tta,
+        "representation": representation, "tta": tta, "flip_horizontal": flip_horizontal,
         "ap_score_floor": AP_THRESHOLD, "nms_iou": NMS_IOU, "max_detections": MAX_DETECTIONS,
         **coco_report(images, annotations, predictions),
     }
@@ -133,6 +147,7 @@ if __name__ == "__main__":
     evaluation.add_argument("--imgsz", type=int, required=True)
     evaluation.add_argument("--device", default="cpu")
     evaluation.add_argument("--tta", action="store_true", help="Enable Ultralytics test-time augmentation")
+    evaluation.add_argument("--flip-horizontal", action="store_true", help="Score a horizontally reflected image view")
     evaluation.add_argument("--output", type=Path, required=True)
     evaluation.add_argument("--predictions-output", type=Path)
     args = parser.parse_args()
@@ -145,7 +160,7 @@ if __name__ == "__main__":
             parser.error("Output paths must be distinct and must not replace the manifest or checkpoint")
         report = evaluate(
             args.manifest, args.checkpoint, args.split, args.imgsz, args.device, args.representation,
-            tta=args.tta, predictions_output=args.predictions_output,
+            tta=args.tta, flip_horizontal=args.flip_horizontal, predictions_output=args.predictions_output,
         )
         write_json(args.output, report)
         print(f"{args.split}: mAP50:95={report['coco_ap_50_95']:.4f}, AP50={report['coco_ap_50']:.4f}")

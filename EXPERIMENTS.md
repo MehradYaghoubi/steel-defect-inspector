@@ -305,7 +305,27 @@ We combined the 320 px YOLO11n and the 448 px YOLO11s texture checkpoints using 
 | YOLO11n and epoch-30 YOLO11s | 0.65 | 79.47% | **45.96%** |
 | YOLO11s, 448 px, epoch 40 | — | 74.42% | 38.90% |
 | YOLO11n and epoch-40 YOLO11s | 0.65 | 79.67% | 45.56% |
+| YOLO11s, 448 px, epoch 50 | — | 76.27% | 43.03% |
+| YOLO11n and epoch-50 YOLO11s | 0.65 | 79.13% | 47.27% |
+| YOLO11n original and reflected views, plus epoch-50 YOLO11s | 0.65 | 79.83% | **47.78%** |
+| YOLO11s, 448 px, epoch 60 | — | 77.89% | 43.43% |
+| YOLO11n and epoch-60 YOLO11s | 0.65 | 79.82% | 46.96% |
+| YOLO11n original and reflected views, plus epoch-60 YOLO11s | 0.65 | 79.34% | 47.15% |
 
-At fusion IoU 0.65, the epoch-30 pair improved mAP@50:95 by 1.78 points over YOLO11n alone (95% interval [0.65, 2.80], 1,000 paired image draws). All six class APs improved at this setting. Crazing remained the weakest class, at 17.82% AP@50:95. The validation set was also used to choose the fusion IoU, so the interval describes that fixed pair of predictions on validation. Fusion requires two detector passes. End-to-end fusion latency and held-out accuracy are pending. The epoch-40 checkpoint SHA-256 is `e6d6696127a9839c77a63c3d293992438c72b36c2aedfd074166f9098cdeb687`.
+At fusion IoU 0.65, the epoch-30 pair improved mAP@50:95 by 1.78 points over YOLO11n alone (95% interval [0.65, 2.80], 1,000 paired image draws). All six class APs improved at this setting. Crazing remained the weakest class, at 17.82% AP@50:95. The validation set was also used to choose the fusion IoU, so the interval describes that fixed pair of predictions on validation. The epoch-40 checkpoint SHA-256 is `e6d6696127a9839c77a63c3d293992438c72b36c2aedfd074166f9098cdeb687`.
+
+Keeping fusion IoU at 0.65, the epoch-50 pair gained 1.32 strict mAP points over the epoch-30 pair (95% interval [0.29, 2.37], 1,000 paired image draws). The epoch-60 checkpoint improved its standalone AP but scored lower in both fusion settings. The checkpoint SHA-256 hashes are `b3d7795e234716c325c883cca1b33be2a32ead6dda03e5a4ec5061ba63c1ce97` (epoch 50) and `17e15ea865daa541b8f260f76b7fa9a582874ebedb9150569a44bfc8f0bfc6a0` (epoch 60).
+
+We repeated the 90-image batch-1 CPU measurement with the 320 px model and the epoch-30 pair, alternating the measurement order. The 320 px model took 43.0 ms at the median and 53.1 ms at the 95th percentile. The pair took 170.8 ms and 197.4 ms, respectively, after sharing image decode and texture preprocessing across both detectors and including box fusion. The evaluator was excluded. This measurement used the same CPU and thread counts as the earlier single-model measurements.
+
+At the validation operating point with at least 85% micro precision, the epoch-30 pair selected threshold 0.30 and reached 85.80% precision and 65.87% recall. The 320 px model reached 85.71% and 66.35% at 0.34. For crazing, the pair matched 23 of 100 annotated boxes. Of the 77 misses, 69 had at least one same-class box with IoU at least 0.50 below the confidence threshold, one had only looser same-class overlap among accepted detections, and seven had no eligible nearby detection under those rules. This diagnostic checks available candidates per annotation, so the same box can explain more than one miss. Neither operating point has been evaluated on the held-out set.
+
+### Reflected image views
+
+Using the 320 px model, we predicted on horizontally reflected, vertically reflected, and 180-degree rotated versions of the preprocessed images. Boxes were mapped back to original image coordinates before fusion. At IoU 0.65, combining the original and horizontal views scored 79.30% mAP@50 and 45.83% mAP@50:95. The original and vertical views reached 43.43% strict mAP. Fusing all four views reached 44.75%. The horizontal pair gained 1.66 strict mAP points over the original view (95% interval [0.82, 2.65], 1,000 paired image draws). Adding the horizontal view to the epoch-50 pair gave the three-pass result above. All view choices used validation data.
+
+The three-pass ensemble gained 0.51 strict mAP points over the two-detector epoch-50 pair (95% interval [-0.24, 1.29], 1,000 paired image draws). On the same 90 CPU timing images, the original and horizontal pair took 87.9 ms at the median and 118.2 ms at the 95th percentile. The single view took 41.6 ms and 60.4 ms in that timing run. The three-pass ensemble has yet to be timed.
+
+To reproduce the pair, score the same 320 px checkpoint twice with `benchmark_yolo.py --manifest data/split.json --representation texture evaluate --checkpoint PATH --split val --imgsz 320 --device cpu`. Supply a distinct `--output` and `--predictions-output` for each run, and include `--flip-horizontal` on the second run. Pass both prediction files to `fuse_detection_runs.py --members ORIGINAL REFLECTED --iou 0.65 --output FUSION`. We reran this workflow and reproduced the pilot predictions exactly.
 
 UC-DetNet reports 82.8% mAP@50 and 50.1% mAP@50:95. We found no author-provided evaluation weights or exact split manifest for a direct comparison. The continuity regularization study reports a 5.03-point strict mAP improvement from Multi-Continuity on a YOLOv12 experiment at 1280 px with a 6:2:2 split. The authors publish training code, which makes the loss a candidate for a matched ablation. [UC-DetNet, Table II](https://cmsweb.com.sg/rps2prod/ccdc2026/epro/pdf/SatAIS-44.pdf) · [Continuity regularization, Section 4.5](https://arxiv.org/html/2608.17362v1) · [Author implementation](https://github.com/minjong92/Continuity-Driven-Representation-Learning-for-Industrial-Defect-Detection)
