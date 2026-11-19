@@ -337,6 +337,19 @@ We repeated the 90-image batch-1 CPU measurement with the 320 px model and the e
 
 At the validation operating point with at least 85% micro precision, the epoch-30 pair selected threshold 0.30 and reached 85.80% precision and 65.87% recall. The 320 px model reached 85.71% and 66.35% at 0.34. For crazing, the pair matched 23 of 100 annotated boxes. Of the 77 misses, 69 had at least one same-class box with IoU at least 0.50 below the confidence threshold, one had only looser same-class overlap among accepted detections, and seven had no eligible nearby detection under those rules. This diagnostic checks available candidates per annotation, so the same box can explain more than one miss. Neither operating point has been evaluated on the held-out set.
 
+### Precision-target validation for the final checkpoints
+
+We checked threshold selection on the 270 validation images using five image folds. For each fold, thresholds were selected on the other four folds in 0.01 increments to maximize recall. We pooled detection counts from the excluded images. The empirical rule required observed micro-precision of at least 85%. The conservative rule used the lower endpoint of a two-sided 95% Wilson interval, as in the demo benchmark. Matching required class agreement and IoU of at least 0.50.
+
+| Configuration | Empirical precision | Empirical recall | Conservative precision | Conservative recall |
+| --- | ---: | ---: | ---: | ---: |
+| Texture 320 px alone | 85.39% | 66.51% | 89.33% | 61.70% |
+| Three-pass fusion | 84.92% | 68.59% | 88.97% | 62.02% |
+| Four passes with raw seed 42 | 85.23% | 68.43% | 88.44% | 63.78% |
+| Three passes with raw seed 43 replacing the reflected view | 85.37% | 67.31% | 89.11% | 64.26% |
+
+The conservative rule selects threshold 0.38 for the three-pass candidate when fitted on all validation images, with 88.47% precision and 63.94% recall at that threshold. Across the five excluded folds, thresholds ranged from 0.36 to 0.43. Resampling the 270 images with their fold-specific predictions gave a 95% precision interval of 85.99% to 91.79% and a recall interval of 57.45% to 66.93% using 1,000 draws. These intervals condition on the fitted rules and the current checkpoints. The detector checkpoints were previously selected on validation, and the results are operating-point measurements on validation.
+
 ### Reflected image views
 
 Using the 320 px model, we predicted on horizontally reflected, vertically reflected, and 180-degree rotated versions of the preprocessed images. Boxes were mapped back to original image coordinates before fusion. At IoU 0.65, combining the original and horizontal views scored 79.30% mAP@50 and 45.83% mAP@50:95. The original and vertical views reached 43.43% strict mAP. Fusing all four views reached 44.75%. The horizontal pair gained 1.66 strict mAP points over the original view (95% interval [0.82, 2.65], 1,000 paired image draws). Adding the horizontal view to the epoch-50 pair gave the three-pass result above. All view choices used validation data.
