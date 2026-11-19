@@ -146,7 +146,7 @@ Both runs used the same training and validation images, normalized boxes, initia
 
 DFE-Net also completed a one-epoch engineering run from fresh weights, using a 25-image subset of project training and all 270 validation images. The run saved a checkpoint that the shared COCO evaluator could load and score. This run used 128 px input and only checks the training-to-evaluation path.
 
-The next full GPU candidate is COCO-pretrained YOLO11s at 448 px, seed 42, up to 80 epochs, batch 8, AdamW with a 0.001 initial learning rate and cosine decay. The run uses the same raw train and validation split, with grayscale-friendly augmentation (no hue or saturation shifts). Evaluate its final candidates with the same COCO protocol. CUDA installation is pending.
+The next full GPU candidate is COCO-pretrained YOLO11s at 448 px, seed 42, up to 80 epochs, batch 8, AdamW with a 0.001 initial learning rate and cosine decay. The planned run was updated to use the texture representation before launch based on the final YOLO11n validation comparison below. The split and COCO evaluator stay fixed. The GPU recipe uses no hue or saturation shifts. CUDA installation is pending.
 
 ### Inference settings and uncertainty
 
@@ -208,3 +208,26 @@ python benchmark_yolo.py --manifest data/split.json --representation texture eva
 python fuse_detection_runs.py --members runs/yolo11n-seed42-final-best-predictions.json runs/e11-texture-predictions.json --iou 0.55 --output runs/fusion-final-raw-e11-texture-repro.json
 python compare_detection_runs.py --baseline runs/yolo11n-seed42-final-best-predictions.json --candidate runs/fusion-final-raw-e11-texture-repro.json --repetitions 500 --seed 42 --output runs/fusion-final-raw-e11-texture-paired-repro.json
 ~~~
+
+### Completed texture run and final-checkpoint fusion
+
+The texture run completed all 16 epochs. The raw and texture checkpoints both used seed 42. All rows were evaluated on the same 270 images and 624 boxes with the shared COCO scorer.
+
+| Input and checkpoint | mAP@50 | mAP@75 | mAP@50:95 |
+| --- | ---: | ---: | ---: |
+| Raw YOLO11n | 73.79% | 35.77% | 39.54% |
+| Texture YOLO11n | 76.16% | 39.79% | 42.94% |
+| Raw and texture fusion | 76.75% | 39.87% | 43.39% |
+
+The texture model improved mAP@50:95 by 3.40 points over raw (95% paired image interval [1.53, 4.96]). Fusion added 0.45 points over texture alone (interval [-0.45, 1.50]). Both intervals use 1,000 paired draws with seed 42 and characterize image variation for the fitted checkpoints. Crazing AP@75 improved from 4.64% with raw input to 9.43% with texture input and remained the weakest class. Prioritize the texture model for the next single-checkpoint run. A CPU repeat with seed 43 was started to check sensitivity to training seed.
+
+The texture checkpoint SHA-256 is d200d37dbb191bb73c35f10a1f887e68ca82b83b6a03db69336dd692644c1996. To reproduce the paired comparisons after training both development runs:
+
+~~~bash
+python benchmark_yolo.py --manifest data/split.json --representation texture evaluate --checkpoint runs/detect/runs/yolo11n-texture-seed42/weights/best.pt --split val --imgsz 256 --output runs/yolo11n-texture-final-val.json --predictions-output runs/yolo11n-texture-final-predictions.json
+python fuse_detection_runs.py --members runs/yolo11n-seed42-final-best-predictions.json runs/yolo11n-texture-final-predictions.json --output runs/fusion-final-raw-final-texture.json
+python compare_detection_runs.py --baseline runs/yolo11n-seed42-final-best-predictions.json --candidate runs/yolo11n-texture-final-predictions.json --repetitions 1000 --seed 42 --output runs/raw-vs-texture-final-paired-val.json
+python compare_detection_runs.py --baseline runs/yolo11n-texture-final-predictions.json --candidate runs/fusion-final-raw-final-texture.json --repetitions 1000 --seed 42 --output runs/texture-vs-fusion-final-paired-val.json
+~~~
+
+These results are validation-only. The reproduced DFE-Net metrics are from its authors' split and evaluator, so they are kept in a separate table.
