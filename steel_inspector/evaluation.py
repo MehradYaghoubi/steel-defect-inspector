@@ -21,12 +21,27 @@ def xywh(box):
     return [float(x1), float(y1), float(x2 - x1), float(y2 - y1)]
 
 
+def split_fingerprint(rows):
+    return hashlib.sha256("".join(row["sha256"] for row in rows).encode()).hexdigest()
+
+
 def coco_ap(images, annotations, predictions):
+    result = coco_report(images, annotations, predictions)
+    return result["coco_ap_50_95"], result["coco_ap_50"]
+
+
+def coco_report(images, annotations, predictions):
     from pycocotools.coco import COCO
     from pycocotools.cocoeval import COCOeval
 
+    present_classes = {annotation["category_id"] for annotation in annotations if not annotation.get("iscrowd", 0)}
+    per_class = {
+        name: {"ap50": 0.0 if index in present_classes else None,
+               "ap50_95": 0.0 if index in present_classes else None}
+        for index, name in enumerate(CLASSES, 1)
+    }
     if not predictions:
-        return 0.0, 0.0
+        return {"coco_ap_50_95": 0.0, "coco_ap_50": 0.0, "coco_per_class": per_class}
     dataset = COCO()
     dataset.dataset = {
         "info": {},
@@ -40,7 +55,22 @@ def coco_ap(images, annotations, predictions):
         evaluator.evaluate()
         evaluator.accumulate()
         evaluator.summarize()
-    return float(evaluator.stats[0]), float(evaluator.stats[1])
+    # COCO dimensions are IoU, recall, category, area range, and detection cap.
+    precision = evaluator.eval["precision"][:, :, :, 0, -1]
+    for index, name in enumerate(CLASSES):
+        class_precision = precision[:, :, index]
+        if per_class[name]["ap50"] is None:
+            continue
+        at_50 = class_precision[0]
+        valid_at_50 = at_50[at_50 >= 0]
+        valid = class_precision[class_precision >= 0]
+        per_class[name]["ap50"] = float(valid_at_50.mean()) if valid_at_50.size else None
+        per_class[name]["ap50_95"] = float(valid.mean()) if valid.size else None
+    return {
+        "coco_ap_50_95": float(evaluator.stats[0]),
+        "coco_ap_50": float(evaluator.stats[1]),
+        "coco_per_class": per_class,
+    }
 
 
 def match_detections(boxes, labels, true_boxes, true_labels):
@@ -164,7 +194,7 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
             false_examples.append({
                 "file": row["file"], "class": defect, "box": boxes[index].tolist(), "score": float(scores[index]),
             })
-    ap, ap50 = coco_ap(images, annotations, predictions)
+    coco = coco_report(images, annotations, predictions)
     for row in counts.values():
         row["recall"] = row["matched"] / row["ground_truth"] if row["ground_truth"] else None
         row["misses"] = row["ground_truth"] - row["matched"]
@@ -172,11 +202,10 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
     results = {
         "split": split,
         "image_count": len(images),
-        "split_sha256": hashlib.sha256("".join(row["sha256"] for row in rows).encode()).hexdigest(),
+        "split_sha256": split_fingerprint(rows),
         "checkpoint_sha256": hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest(),
         "flip_ensemble": flip_ensemble,
-        "coco_ap_50_95": ap,
-        "coco_ap_50": ap50,
+        **coco,
         "ap_score_floor": AP_THRESHOLD,
         "error_score_threshold": threshold,
         "error_match_iou": MATCH_IOU,
@@ -191,7 +220,8 @@ def evaluate(manifest, checkpoint, output, *, split, threshold=0.25, device="cpu
     if tune_threshold:
         results["threshold_sweep"] = sweep
     write_json(output, results)
-    print(f"{split}: {len(images)} images, mAP50:95={ap:.4f}, AP50={ap50:.4f}")
+    print(f"{split}: {len(images)} images, mAP50:95={coco['coco_ap_50_95']:.4f}, "
+          f"AP50={coco['coco_ap_50']:.4f}")
     return results
 
 
