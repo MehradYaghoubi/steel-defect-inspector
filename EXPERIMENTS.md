@@ -394,6 +394,19 @@ The validation annotations contain 62 boxes below 32² original-image pixels, 42
 
 We tested two adjustments based on predicted area below 32² pixels. Halving the 448 px member's scores for those predictions changed the three-pass strict mAP from 47.96% to 48.00%. Including the raw fourth member only for small predicted boxes scored 47.42%. We retained the original three-pass setup. The size breakdown comes from one validation split and has relatively few small annotations.
 
+### Overlapping crops
+
+We ran the same 320 px detector on four corner crops, each spanning 70% of the source width and height. We preprocessed texture on the full image before cropping. We mapped boxes to full-image coordinates, dropped predictions within three pixels of a cut edge, and applied the shared class-wise NMS and detection cap after merging crops. The experiment used all 270 validation images.
+
+| Configuration | Small AP | mAP@50:95 |
+| --- | ---: | ---: |
+| Three full-image passes | 28.87% | 47.96% |
+| Four crops alone | 30.78% | 19.12% |
+| Add all crop detections to the three-pass fusion | 34.74% | 46.26% |
+| Add only small crop detections to the three-pass fusion | 33.60% | 47.30% |
+
+As a separate check, we appended small crop detections whose best overlap with a same-class full-image prediction was below 0.50. We left existing coordinates and scores in place and multiplied the appended scores by 0.25 or 0.50. Both settings scored 48.00% strict mAP when rounded to two decimals. The largest small-AP change in this check was 0.27 points. We retained full-image inference because adding four crop passes gave little overall benefit.
+
 ### Reproducing the candidate training runs
 
 Generate the texture dataset with `python benchmark_yolo.py --manifest data/split.json --representation texture prepare --destination runs/yolo-neudet-texture` in a fresh output directory. The three stages use this dataset with Ultralytics 8.4.11, seed 42, zero data-loader workers, and two PyTorch CPU threads. The two CPU runs used Python 3.14.4 and PyTorch 2.14.0+cpu. The CUDA run used Python 3.11.16, PyTorch 2.8.0+cu126, and an RTX 2060 SUPER. Run the two CPU stages in sequence and the CUDA stage in its own environment.

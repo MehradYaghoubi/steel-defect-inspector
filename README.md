@@ -6,6 +6,10 @@ On 270 NEU-DET test images, the 192 × 192 detector reached **88.99% micro-preci
 
 The six classes are crazing, inclusion, patches, pitted surface, rolled-in scale, and scratches. The benchmark uses the bounding-box annotations from the NEU-DET release. The maintainers describe 1,800 grayscale images at 200 × 200 pixels. [NEU surface defect database](https://faculty.neu.edu.cn/songkc/en/zdylm/263270/list/index.htm)
 
+## Research benchmark
+
+The current three-pass YOLO11 candidate scored **79.89% AP@50** and **47.96% mAP@50:95** on 270 validation images. The benchmark uses an audited split and a shared COCO evaluator. The matched DFE-Net run uses the same training and validation assignments, with the held-out comparison scheduled after checkpoint selection. [Candidate training and checkpoint hashes](EXPERIMENTS.md#reproducing-the-candidate-training-runs) · [Reference replay and comparison](EXPERIMENTS.md#held-out-comparison-procedure)
+
 ## Run the demo
 
 If you have the local `runs/precision192-e35.onnx` file from training, start with the demo command below. In a fresh checkout, train and export a checkpoint first. The demo needs only the ONNX model and the demo dependencies.
