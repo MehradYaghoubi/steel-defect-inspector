@@ -267,3 +267,27 @@ SLF-YOLO reports 80.0% mAP@50 and 49.0% mAP@50:95 under its own 8:1:1 split. The
 At that revision the released training loss calls CIoU, and the repository tree contains neither evaluation weights nor a NEU-DET split manifest. A retrained result from the available code would therefore be an architecture comparison using CIoU. The reported 49.0% stays an external reference under a separate protocol. [Released box loss](https://github.com/zacianfans/SLF-YOLO/blob/da113f16d8a46b0543f13366b0d3c1f2ae445d24/SLF-YOLO/ultralytics/utils/loss.py#L102)
 
 In the 448 px YOLO11s run, the shared COCO evaluator scored the epoch-10 checkpoint at 60.58% mAP@50 and 26.77% mAP@50:95. At epoch 20 it reached 67.14% and 34.77%, respectively, on the same validation split. These are development checkpoints from the ongoing 80-epoch run. The 640 px DFE-Net GPU preflight also completed training on a small subset, saved a checkpoint and evaluated it on the 270 validation images with the shared evaluator. Full DFE-Net training remains queued.
+
+The archived epoch-30 checkpoint reached 75.92% mAP@50 and 39.45% mAP@50:95 on the same 270 images. Its SHA-256 is `6427c1eca0a250ea1395dd09b618bc761b5ecb4be79cdb19870026a9a250a7fb`.
+
+### Validation operating points and CPU latency
+
+For each model, we swept confidence in increments of 0.01 and selected the threshold with the highest recall among points with at least 85% micro precision. Matching was one-to-one within the same class and used IoU of at least 0.50. The sweep used 624 annotated boxes across 270 validation images.
+
+| Development model | Confidence threshold | Micro precision | Micro recall | Matched boxes |
+| --- | ---: | ---: | ---: | ---: |
+| YOLO11n texture, 256 px | 0.46 | 85.30% | 52.08% | 325 |
+| YOLO11n texture fine-tuned at 320 px | 0.34 | 85.71% | 66.35% | 414 |
+| Raw and texture fusion, 256 px | 0.39 | 85.23% | 56.41% | 352 |
+
+We timed every third validation image in manifest order, for 90 images total. Each measurement includes image decoding, texture preprocessing, resizing, the forward pass and NMS at batch size 1. We used a Windows i5-9400F, two PyTorch CPU threads and one OpenCV thread. We warmed up each model on eight images and rotated the model order across measured images while GPU training ran in a separate process.
+
+| Development model | Median latency | 95th percentile latency |
+| --- | ---: | ---: |
+| YOLO11n texture, 256 px | 32.7 ms | 42.6 ms |
+| YOLO11n texture fine-tuned at 320 px | 42.3 ms | 54.6 ms |
+| YOLO11s texture, 448 px, epoch 20 | 131.9 ms | 147.6 ms |
+
+### Image-level score adjustment
+
+We pooled the frozen 320 px detector's features with global means and maxima. Using the 1,258 training images, we standardized the pooled features and fitted six binary logistic regressions with `C=0.1` to predict whether each defect class was present. We multiplied each retained box score by `(0.1 + 0.9 * class_probability) ** alpha` after NMS, then applied the shared score floor. Across validation trials with `alpha` of 0.25, 0.50, 0.75 and 1.00, mAP@50:95 ranged from 43.98% to 44.13%. The original scores reached 44.17%, so we retained them.
