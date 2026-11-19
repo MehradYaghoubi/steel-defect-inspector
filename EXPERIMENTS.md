@@ -196,3 +196,15 @@ python compare_detection_runs.py --baseline runs/incumbent-matched-predictions.j
 ~~~
 
 The paired comparison used 1,000 draws with seed 42. The mAP@50 gain was 14.03 points (95% interval [9.61, 17.28]). The mAP@50:95 gain was 16.94 points (95% interval [14.33, 19.29]). This estimates the variation across these validation images for two fixed checkpoints.
+
+### Fusion with the later texture checkpoint
+
+The final raw checkpoint and the texture checkpoint after epoch 11 reached 75.93% mAP@50 and 41.12% mAP@50:95 when fused at IoU 0.55 on the audited validation split. The texture checkpoint alone scored 72.63% and 37.08%. Compared with the final raw checkpoint alone, fusion gained 2.14 and 1.57 percentage points. The 95% paired image intervals were [0.14, 3.97] and [0.14, 2.64] points across 500 draws with seed 42. This comparison is exploratory because the checkpoint combination was selected during development. Fusion requires two model passes per image.
+
+The initial hypothesis of a general box-size bias was unsupported. In exploratory three-fold cross-validation over the 270 validation images, each fold selected no rescaling by mAP@50:95 from factors 0.90, 0.95, 1.00, 1.05 and 1.10. The held-out predictions therefore matched the original boxes.
+
+~~~bash
+python benchmark_yolo.py --manifest data/split.json --representation texture evaluate --checkpoint runs/yolo11n-texture-seed42-e11.pt --split val --imgsz 256 --output runs/yolo11n-texture-seed42-e11-coco.json --predictions-output runs/e11-texture-predictions.json
+python fuse_detection_runs.py --members runs/yolo11n-seed42-final-best-predictions.json runs/e11-texture-predictions.json --iou 0.55 --output runs/fusion-final-raw-e11-texture-repro.json
+python compare_detection_runs.py --baseline runs/yolo11n-seed42-final-best-predictions.json --candidate runs/fusion-final-raw-e11-texture-repro.json --repetitions 500 --seed 42 --output runs/fusion-final-raw-e11-texture-paired-repro.json
+~~~
