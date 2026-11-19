@@ -2,9 +2,28 @@
 
 The official archive supplied 1,800 image and annotation pairs. The preparation audit removed three repeated boxes and excluded two records with identical decoded pixels and conflicting annotations. The seed-42 split contained 1,258 training images, 270 validation images, and 270 test images. The source archive SHA-256 was `cf04bb0b05d364f23e05031b191b20b908a0e5eb11466df74ee7fba98ec835d5`. [NEU-DET maintainers](https://faculty.neu.edu.cn/songkc/en/zdylm/263270/list/index.htm)
 
-## Validation and model selection
+## 192 × 192 run
 
-Training ran on an Intel Core i5-9400F with Windows, CPython 3.14.7 and PyTorch 2.14.0+cpu. All runs used batch size 32 and seed 42. Use `--size 96 --epochs 8` to reproduce the original configuration and add `--augment` for its training-time flip variant. The updated run used `--size 128 --epochs 24`, without training-time augmentation. Its two-pass variant averaged the original and mirrored grid predictions during inference.
+The 192 × 192 model trained for 35 epochs with batch size 24, seed 42 and horizontal flip augmentation. Evaluation used mirrored inference. Validation mAP@50:95 was 22.61% and AP@50 was 59.77%, up from 21.84% and 54.20% for the 128 × 128 model.
+
+The confidence sweep used 0.01 increments on the 270 validation images. For the balanced cutoff, the sweep maximized micro-F1 and selected 0.34. For the high-precision cutoff, it maximized recall subject to the lower endpoint of a two-sided 95% Wilson interval for validation precision being at least 85%, using matched and unmatched prediction counts with `z = 1.96`. The sweep selected 0.58 with 86 matches and 5 unmatched predictions (94.51% precision, 13.78% recall, Wilson lower endpoint 87.78%). This rule adds a margin during threshold selection. Boxes from one image can be correlated.
+
+Both cutoffs were fixed before the 192 × 192 evaluation on the existing 270-image test split. Matching uses class agreement and IoU ≥ 0.50.
+
+| Test cutoff | Precision | Recall | F1 | Matched boxes | Unmatched predictions | Missed boxes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.34 | 62.10% | 56.71% | 59.28% | 372 | 227 | 284 |
+| 0.58 | **88.99%** | **14.79%** | 25.36% | 97 | 12 | 559 |
+
+Test AP@50 was 57.74% and mAP@50:95 was 21.67% for the same ranked predictions. At 0.34 the model matched 20 more boxes and returned 44 fewer unmatched predictions than the previous model at its balanced cutoff. The 0.58 cutoff suits prioritizing high-confidence alerts for review. It missed 559 of 656 annotated defects. The 85% target refers to observed micro-precision on the benchmark.
+
+PyTorch and ONNX Runtime passed parity on 60 fixed test images at 0.58. On one CPU thread, ONNX Runtime took 8.11 ms p50 and 9.43 ms p95, including preprocessing and NMS. PyTorch took 15.38 ms p50 and 18.61 ms p95. Reproduction commands are in the [README](README.md).
+
+## Previous runs
+
+### Validation and model selection
+
+Training ran on an Intel Core i5-9400F with Windows, CPython 3.14.7 and PyTorch 2.14.0+cpu. The 96 × 96 and 128 × 128 runs used batch size 32 and seed 42. Use `--size 96 --epochs 8` to reproduce the original configuration and add `--augment` for its training-time flip variant. The updated run used `--size 128 --epochs 24`, without training-time augmentation. Its two-pass variant averaged the original and mirrored grid predictions during inference.
 
 | Training variant | Validation mAP@50:95 | Validation AP@50 |
 | --- | ---: | ---: |
@@ -15,7 +34,7 @@ Training ran on an Intel Core i5-9400F with Windows, CPython 3.14.7 and PyTorch 
 
 The updated model and inference mode were selected by validation mAP@50:95. For each model, a sweep of whole-percent cutoffs on validation maximized micro-F1, breaking ties by precision and then the higher cutoff. Test used the resulting fixed cutoffs.
 
-## Test results
+### Test results
 
 All three rows use the same 270 test images and 656 reference boxes. AP uses ranked predictions with a 0.01 score floor. The operating-point metrics use the cutoff shown, class agreement, and IoU ≥ 0.50.
 
@@ -27,7 +46,7 @@ All three rows use the same 270 test images and 656 reference boxes. AP uses ran
 
 Against the validation-tuned baseline, the update matched 64 additional boxes and produced 43 fewer unmatched predictions. The initial 0.25 cutoff remains useful as a reference for a higher-recall, lower-precision operating point.
 
-## Test errors
+### Test errors
 
 The table below describes the updated model at the chosen 0.34 cutoff.
 
@@ -42,7 +61,7 @@ The table below describes the updated model at the chosen 0.34 cutoff.
 
 Crazing had the lowest recall and the most missed boxes at the global cutoff. Inclusion produced the most unmatched predictions. `evaluate` generates marked examples alongside the local JSON report. NEU-DET measures performance on annotated defect images. A production assessment needs representative defect-free strips and the installed camera and lighting.
 
-## CPU runtime
+### CPU runtime
 
 PyTorch and ONNX agreed within tolerance on 60 fixed test images for the updated two-pass model. The largest difference between matched box coordinates was 0.000069 pixels. Timing includes preprocessing, both passes, and decoding with NMS on one CPU thread after warm-up. Runtime versions were PyTorch 2.14.0+cpu and ONNX Runtime 1.32.0. The original single-pass ONNX run reported a 1.96 ms p95 on the same machine.
 
