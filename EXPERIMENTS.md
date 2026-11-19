@@ -375,6 +375,8 @@ We fitted simple corrections in five image-grouped validation folds. A ridge mod
 
 We started a controlled training experiment from the existing 320 px checkpoint. Both arms use the same training images, ten CPU epochs, batch eight, AdamW at an initial learning rate of 0.00025, and seed 42. The intervention multiplies box and distribution focal loss weights by 1.5, from 7.5 and 1.5 to 11.25 and 2.25. The classification weight remains 0.5. Both arms will be scored with the same single-view and fusion protocols.
 
+The epoch-six control snapshot scored 77.93% mAP@50 and 43.47% mAP@50:95 as a single-view detector. Replacing the original 320 px checkpoint in both views of the three-pass ensemble gave 80.95% mAP@50 and 47.14% mAP@50:95. Against the original fusion, the differences were +1.05 points at IoU 0.50 (95% interval [-0.59, 2.76]) and -0.82 points across IoU 0.50:0.95 (interval [-1.77, 0.14]), from 1,000 paired image draws. The snapshot SHA-256 is `f33ddc07bb8039163e9995056706971717535cfdf78a0905392f1d0e1cf4f1f0`. This comparison checks the interim control checkpoint against its initialization. The comparison between training arms will use the completed runs.
+
 We also tested a second round of same-class suppression on the fused predictions. Hard suppression at IoU 0.45, 0.55, and 0.65 produced 46.78%, 47.36%, and 47.88% mAP@50:95. Gaussian score decay using `exp(-IoU**2 / sigma)` at sigma 0.25, 0.50, and 0.75 produced 47.07%, 47.72%, and 47.84%. All six settings scored below the original 47.96% and were dropped. This experiment operated on the already-fused boxes and used the same validation images and confidence floor.
 
 ### Box voting and ensemble diversity
