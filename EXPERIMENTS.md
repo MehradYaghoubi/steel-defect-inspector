@@ -291,3 +291,21 @@ We timed every third validation image in manifest order, for 90 images total. Ea
 ### Image-level score adjustment
 
 We pooled the frozen 320 px detector's features with global means and maxima. Using the 1,258 training images, we standardized the pooled features and fitted six binary logistic regressions with `C=0.1` to predict whether each defect class was present. We multiplied each retained box score by `(0.1 + 0.9 * class_probability) ** alpha` after NMS, then applied the shared score floor. Across validation trials with `alpha` of 0.25, 0.50, 0.75 and 1.00, mAP@50:95 ranged from 43.98% to 44.13%. The original scores reached 44.17%, so we retained them.
+
+### Fusion across model sizes and resolutions
+
+We combined the 320 px YOLO11n and the 448 px YOLO11s texture checkpoints using `fuse_detection_runs.py`. The sweep changes the IoU used to cluster same-class boxes across models. Each model's predictions use the shared COCO evaluation settings before fusion.
+
+| Model on the frozen validation split | Fusion IoU | mAP@50 | mAP@50:95 |
+| --- | ---: | ---: | ---: |
+| YOLO11n, fine-tuned at 320 px | — | 78.84% | 44.17% |
+| YOLO11s, 448 px, epoch 30 | — | 75.92% | 39.45% |
+| YOLO11n and epoch-30 YOLO11s | 0.45 | 81.04% | 45.77% |
+| YOLO11n and epoch-30 YOLO11s | 0.55 | 80.57% | 45.89% |
+| YOLO11n and epoch-30 YOLO11s | 0.65 | 79.47% | **45.96%** |
+| YOLO11s, 448 px, epoch 40 | — | 74.42% | 38.90% |
+| YOLO11n and epoch-40 YOLO11s | 0.65 | 79.67% | 45.56% |
+
+At fusion IoU 0.65, the epoch-30 pair improved mAP@50:95 by 1.78 points over YOLO11n alone (95% interval [0.65, 2.80], 1,000 paired image draws). All six class APs improved at this setting. Crazing remained the weakest class, at 17.82% AP@50:95. The validation set was also used to choose the fusion IoU, so the interval describes that fixed pair of predictions on validation. Fusion requires two detector passes. End-to-end fusion latency and held-out accuracy are pending. The epoch-40 checkpoint SHA-256 is `e6d6696127a9839c77a63c3d293992438c72b36c2aedfd074166f9098cdeb687`.
+
+UC-DetNet reports 82.8% mAP@50 and 50.1% mAP@50:95. We found no author-provided evaluation weights or exact split manifest for a direct comparison. The continuity regularization study reports a 5.03-point strict mAP improvement from Multi-Continuity on a YOLOv12 experiment at 1280 px with a 6:2:2 split. The authors publish training code, which makes the loss a candidate for a matched ablation. [UC-DetNet, Table II](https://cmsweb.com.sg/rps2prod/ccdc2026/epro/pdf/SatAIS-44.pdf) · [Continuity regularization, Section 4.5](https://arxiv.org/html/2608.17362v1) · [Author implementation](https://github.com/minjong92/Continuity-Driven-Representation-Learning-for-Industrial-Defect-Detection)
